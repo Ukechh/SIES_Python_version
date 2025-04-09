@@ -5,8 +5,8 @@ import numpy as np
 #Inputs: x-> the center (2x1 matrix)
 #   y-> Array of points, (2xn matrix)
 
-def Green2D(c, y):
-    z = c-y
+def Green2D(x, y):
+    z = x-y
     r = (1/(2*np.pi))*np.log(np.linalg.norm(z,2,axis=0));
     return r
 
