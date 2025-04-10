@@ -23,6 +23,42 @@ def Green2D_grad(x,y):
     Gy = (1 / (2*np.pi)) * X2 / S
     return Gx, Gy
 
+def Green2D_Dn(x,y, normal):
+    # Normal derivative of the 2D Green function F(y)=G(y,x) = 1/2/pi * log|y-x| with respect to y on a
+    # boundary. We compute <DF(y), n_y>. Remark that although mathematically speaking G(x,y)=G(y,x),
+    # however the order of the arguments must be "X, Y, normal" here.
+    #
+    # Inputs:
+    # X: 2 X M points
+    # Y, normal: 2 X N boundary points and the normal vector
+    # Output:
+    # G is a matrix whose (m, n) term is the normal derivative evlauated at (X(:,m), Y(:,n)).
+    Gx, Gy = Green2D_grad(y,x)
+    Gn = np.diag(normal[0,:])@Gx + np.diag(normal[1,:])@ Gy
+    return Gn.T
+
+def Green2D_Hessian(X,Y):
+    n = X.shape()[1]
+    m = X.shape()[1]
+    H = np.zeros(2*n,2*m)
+
+    XY1 = General_tools.tensorplus(X[0,:],-Y[0,:])
+    XY2 = General_tools.tensorplus(X[1,:],-Y[1,:])
+
+    DN = 2*np.pi*(XY1**2+XY2**2)**2
+    M1 = (XY2**2-XY1**2)/ DN
+    M2 = -(2*XY1*XY2) / DN
+    M3 = (XY1**2-XY2**2)/ DN
+    
+    H[0::2, 0::2] = M1
+    H[0::2, 1::2] = M2
+    H[1::2, 0::2] = M2
+    H[1::2, 1::2] = M3
+
+    H1 = np.block([[M1, M2],
+               [M2, M3]])
+    return H, H1
+
 def Green3D(x,y):
     z = x-y;
     r = (-1/(4*np.pi))*np.linalg.norm(z,2,axis=0)**(-1);

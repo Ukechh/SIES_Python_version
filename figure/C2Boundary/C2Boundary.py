@@ -67,6 +67,10 @@ class C2Boundary:
     def sigma(self):
         return 2*np.pi / self._nb_points * self._tvec_norm; 
 
+    @property
+    def normal(self):
+        return self.__normal
+
     def tvec_norm(self):
         return self._tvec_norm
 

@@ -79,8 +79,9 @@ class Operator(ABC):
             raise ValueError('Not implemented')
     
     @abstractmethod
-    def make_kernel_matrix(self, *args, **kwargs):
+    def make_kernel_matrix(self, *args, **kwargs) -> np.ndarray:
         pass
+        
 
 class SingleLayer(Operator):
     
@@ -117,6 +118,45 @@ class SingleLayer(Operator):
         Gx, Gy = green.Green2D_grad(D.points,X)
         v1 = Gx @ (F.ravel() * D.sigma.ravel())
         v2 = Gy @ (F.ravel() * D.sigma.ravel())
-        r = np.vstack([v1, v2])
+        r = np.vstack((v1, v2))
         return r
 
+class DoubleLayer(Operator):
+    
+    def __init__(self,D1,type1,step1,D2,type2,step2):
+        super().__init__(D1, type1, step1, D2, type2, step2)
+        if self.D1 == self.D2:
+            raise TypeError("This operator is not defined for identical boundaries because of the jump")
+        elif self.D2 is None:
+            raise ValueError("D2 needs to be specified")
+        else:
+            self.Kmat = DoubleLayer.make_kernel_matrix(self.D1.points, self.D1.normal, self.D1.sigma, self.D2.normal)
+
+    #Utility methods
+    def fwd(self,f):
+        if self.D1 == self.D2:
+            raise TypeError("This operator is not defined for identical boundaries")
+        return Operator.fwd(self,f)
+
+    @staticmethod
+    def eval(D,F,X):
+        dGn = green.Green2D_Dn(X,D.points,D.normal)
+        r = dGn @ (F.ravel()*D.sigma.ravel())
+        return r.reshape(1,-1)
+    
+    @staticmethod
+    def make_kernel_matrix(D,normal, sigma, E):
+        Gx, Gy = green.Green2D_grad(E,D)
+        K = -(Gx @ np.diag(normal[0,:]) ) + Gy @ np.diag(normal[1,:]) @ np.diag(sigma)
+        return K
+    
+    @staticmethod
+    def eval_grad(D,F,X):
+        H, _ = green.Green2D_Hessian(D.points,X)
+        vv = -(D.sigma*F.ravel()) @ (General_tools.bdiag(D.normal.T,1) @ H)
+        r = np.vstack((vv[::2],vv[1::2]))
+        return r
+    
+class Kstar(Operator):
+    def __init__(self,D1,type1,step1,D2=None,type2=None,step2=None):
+        super().__init__(D1, type1, step1, D2, type2, step2)
