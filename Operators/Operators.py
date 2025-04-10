@@ -1,11 +1,12 @@
 import numpy as np
 import math
+from FundamentalSols import green
 from Tools_fct import BEM_tools as BEM
 from figure.C2Boundary.C2Boundary import C2Boundary
-from FundamentalSols.green import Green2D
 from Tools_fct import General_tools
+from abc import ABC, abstractmethod
 
-class Operator:
+class Operator(ABC):
     D1: C2Boundary
     D2: C2Boundary
     Kmat : np.ndarray
@@ -56,6 +57,12 @@ class Operator:
     def fwd(self, f):
         return self.Kmat @ self.Psi @ f
     
+    
+    @staticmethod
+    def green(X,Y):
+        g = 1/ (4*np.pi) * np.log(X**2 + Y**2)
+        return g
+
     @property
     def stiffmat(self):
         sigma2 = np.diag(self.D2.sigma)
@@ -70,15 +77,46 @@ class Operator:
             return np.dot(self.Phi_t, np.dot(sigma2, np.dot(self.Kmat, self.Psi)))
         else:
             raise ValueError('Not implemented')
-
+    
+    @abstractmethod
+    def make_kernel_matrix(self, *args, **kwargs):
+        pass
 
 class SingleLayer(Operator):
     
     def __init__(self,D1,type1,step1,D2=None,type2=None,step2=None):
         super().__init__(D1, type1, step1, D2, type2, step2)
-        #TO DO: Finish writing the Single and Double Layer operators class with their make_kernel_matrix functions!
+        if self.D1 == self.D2:
+            self.Kmat = SingleLayer.make_kernel_matrix(D1.points, D1.sigma)
+        else:
+            self.Kmat = SingleLayer.make_kernel_matrix(D1.points, D1.sigma, self.D2.points)
 
 
-
-
+    @staticmethod
+    def make_kernel_matrix(D,sigma,E=None):
+        if not E is None:
+            X1 = General_tools.tensorplus(E[0,:],-D[0,:])
+            X2 = General_tools.tensorplus(E[1,:],-D[1,:])
+            K = Operator.green(X1,X2) @ np.diag(sigma)
+        else:
+            N = D.shape()[1]
+            K = np.zeros(N,N)
+            for i in range(N):
+                K[i, 0:i] = sigma[0:i] * Operator.green(D[0, i] - D[0, 0:i], D[1, i] - D[1, 0:i])
+                K[i, i+1:N] = sigma[i+1:N] * Operator.green(D[0, i] - D[0, i+1:N], D[1, i] - D[1, i+1:N])
+                K[i,i] = sigma[i] * (np.log(sigma[i]/2) - 1) / (2*np.pi)
+        return K
+    
+    @staticmethod
+    def eval(D,F,X):
+        G = green.Green2D(D.points, X)
+        ev = (F.reshape(1,-1)*D.sigma) @ G
+        return ev
+    @staticmethod
+    def eval_grad(D,F,X):
+        Gx, Gy = green.Green2D_grad(D.points,X)
+        v1 = Gx @ (F.ravel() * D.sigma.ravel())
+        v2 = Gy @ (F.ravel() * D.sigma.ravel())
+        r = np.vstack([v1, v2])
+        return r
 

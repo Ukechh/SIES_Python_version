@@ -59,6 +59,10 @@ class C2Boundary:
     def cpoints(self):
         #This method returns the points as a complex numbers with x- axis being the real part and y-axis being the imaginary part
         return self._points[0,:] + 1j * self._points[1,:];
+    
+    @property
+    def points(self):
+        return self._points
     @property
     def sigma(self):
         return 2*np.pi / self._nb_points * self._tvec_norm; 
