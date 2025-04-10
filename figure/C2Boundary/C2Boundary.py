@@ -1,15 +1,19 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+
 #We consider the points array as d x n matrix where d is the dimension and n is the number of points
 import numpy as np
 import matplotlib.pyplot as plt
 import warnings
 import math
 import copy
-import Tools_fct.convfix
-import C2Boundary.Boundary_methods as bm
+from figure.C2Boundary import Boundary_methods as bm
+from Tools_fct import convfix
 
-
-class C2Boundary:
-    def __init__(self, points, tvec, avec, normal, npts, nstr= None, com= None):
+class C2Bound:
+    def __init__(self, points, tvec, avec, normal, npts=100, nstr= None, com= None):
         self._points = points;
         self._tvec = tvec;
         self._avec = avec;
@@ -44,7 +48,7 @@ class C2Boundary:
     
     def get_nbpts(self):
         #This method returns the number of points in the boundary
-        return self._points.shape()[1]
+        return self._points.shape[1]
 
     def get_diam(self):
         #This method gives the diameter of the smallest ball with center COM and containing the boundary
@@ -65,7 +69,7 @@ class C2Boundary:
         return self._points
     @property
     def sigma(self):
-        return 2*np.pi / self._nb_points * self._tvec_norm; 
+        return 2*np.pi / (self._nb_points) * self._tvec_norm; 
 
     @property
     def normal(self):
@@ -145,7 +149,7 @@ class C2Boundary:
         return flag
 
     def isdisjoint(self, B):
-        if not isinstance(B, C2Boundary):
+        if not isinstance(B, C2Bound):
             raise TypeError("The argument must be an instance of C2Boundary.")
         flag = 1;
         d = np.linalg.norm(self._center_of_mass-B.get_center_of_mass);
@@ -206,8 +210,8 @@ class C2Boundary:
         hw = math.floor(hw)
         if hw > 0:
             if pos is None or w is None:
-                p1 = Tools_fct.convfix.convfix(self._points[0,:], hw)
-                p2 = Tools_fct.convfix.convfix(self._points[1,:], hw)
+                p1 = convfix.convfix(self._points[0,:], hw)
+                p2 = convfix.convfix(self._points[1,:], hw)
             else:
                 pos = pos % 1
                 w = w % 1
@@ -221,8 +225,8 @@ class C2Boundary:
                 if idx + Lt <= self._nb_points:
                     s2 = idx + Lt
 
-                q1 = Tools_fct.convfix.convfix(self._points[0, s1:s2], hw)
-                q2 = Tools_fct.convfix.convfix(self._points[1, s1:s2], hw)
+                q1 = convfix.convfix(self._points[0, s1:s2], hw)
+                q2 = convfix.convfix(self._points[1, s1:s2], hw)
 
                 p1 = np.concatenate([self._points[0, :s1], q1, self._points[0, s2:]])
                 p2 = np.concatenate([self._points[1, :s1], q2, self._points[1, s2:]])
@@ -232,7 +236,7 @@ class C2Boundary:
             theta = 2 * np.pi * np.arange(N) / N
 
             D1, tvec1, avec1, normal1 = bm.rescale(D, theta, self._nb_points, self.get_box(), dspl=None)
-            new_boundary = C2Boundary(D1, tvec1, avec1, normal1, self._nb_points)
+            new_boundary = C2Bound(D1, tvec1, avec1, normal1, self._nb_points)
         else:
             new_boundary = copy.deepcopy(self)
 
@@ -254,7 +258,7 @@ class C2Boundary:
                 d2 = np.convolve(d2,k,mode)
                 D = np.array([d1[M:2*M], d2[M:2*M]])
             D1, tvec, avec, normal = bm.rescale(D, theta0, self._nb_points, box)
-            new_boundary = C2Boundary(D1,tvec,avec,normal,[],self._name_str)
+            new_boundary = C2Bound(D1,tvec,avec,normal,nstr=self._name_str,com=[])
         else:
             new_boundary= copy.deepcopy(self)
         return new_boundary
@@ -270,7 +274,7 @@ class C2Boundary:
 
             h = lambda t : np.exp(-10*(t**2))
             Lt = max(1,int(math.floor(self._nb_points*width)))
-            toto = np.concatenate([h(np.linspace(-1,1,Lt)), np.zeros(1,self._nb_points-Lt)])
+            toto = np.array( [h(np.linspace(-1,1,Lt)), np.zeros(self._nb_points-Lt)] ) #CORRECTED A PROBLEM THIS IS NOW A LINE ARRAY WITH SHAPE (nbpts,)
             H = np.roll(toto, shift = idx-math.floor(Lt/2),axis=1)
             if theta is None:
                 R = np.eye(2)
@@ -278,7 +282,7 @@ class C2Boundary:
                 R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
             D = self._points + epsilon*(R@self.__normal)*H
             D1, tvec, avec,normal = bm.rescale(D, theta0, self._nb_points)
-            new_boundary = C2Boundary(D1,tvec,avec,normal,[], self._name_str)
+            new_boundary = C2Bound(D1,tvec,avec,normal,com=[], nstr=self._name_str)
         else:
             new_boundary = copy.deepcopy(self)
         return new_boundary
@@ -289,7 +293,7 @@ class C2Boundary:
     @staticmethod
     def check_sampling(points):
         #This method checks wether the boundary has any singularities
-        npts = points.shape()[1];
+        npts = points.shape[1];
         val = 1;
         for p in range(npts):
             x = points[:,p];
@@ -308,7 +312,7 @@ class C2Boundary:
         return val
     @staticmethod
     def get_com(points, tvec, normal):
-        npts = points.shape()[1];
+        npts = points.shape[1];
         tvec_norm = np.linalg.norm(tvec, axis = 0)
         sigma = 2*np.pi / npts * tvec_norm;
         mass = (np.sum(points[0,:] * normal[0,:] * sigma) + np.sum(points[1,:]*normal[1,:]*sigma)) / 2;
@@ -318,19 +322,19 @@ class C2Boundary:
     
     @staticmethod
     def smooth_out_singularity(points, com, hw, box=None):
-        npts = points.shape()[1]
+        npts = points.shape[1]
         if box is None or box == []:
             w = max(points[0,:])-min(points[0,:])
             h = max(points[1,:])-min(points[1,:])
             box = [w, h]
         
-        p1 = Tools_fct.convfix.convfix(points[0,:], hw)
-        p2 = Tools_fct.convfix.convfix(points[1,:], hw)
+        p1 = convfix.convfix(points[0,:], hw)
+        p2 = convfix.convfix(points[1,:], hw)
         D = np.vstack([p1, p2])
         N = max(p1.shape)
         theta = np.linspace(0, 2 * np.pi, N, endpoint=False)
         D1, tvec1,avec1,normal1 = bm.rescale(D,theta,npts,box)
-        com1 = C2Boundary.get_com(D1, tvec1,normal1)
+        com1 = C2Bound.get_com(D1, tvec1,normal1)
         D1 = D1 - (com1 - com)[:, np.newaxis]
         return D1, tvec1, avec1, normal1
 

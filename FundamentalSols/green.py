@@ -5,7 +5,7 @@ from Tools_fct import General_tools
 def Green2D(x, y):
     #Inputs: X,Y arrays (2,n), (2,m) of points
     #Output. Matrix of size (n,m) where the (i,j)-th entry is the 2D Green function evaluated at (X[:,i]-Y[:,j])
-   if x.shape()[0] != 2 or y.shape()[0] != 2:
+   if x.shape[0] != 2 or y.shape[0] != 2:
        raise ValueError("The inputs must have 2 rows!")
    X1 = General_tools.tensorplus(x[0,:],-y[0,:])
    X2 = General_tools.tensorplus(x[1,:],-y[1,:])

@@ -1,14 +1,19 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+
 import numpy as np
 import math
 from FundamentalSols import green
 from Tools_fct import BEM_tools as BEM
-from figure.C2Boundary.C2Boundary import C2Boundary
+from figure.C2Boundary.C2Boundary import C2Bound
 from Tools_fct import General_tools
 from abc import ABC, abstractmethod
 
 class Operator(ABC):
-    D1: C2Boundary
-    D2: C2Boundary
+    D1: C2Bound
+    D2: C2Bound
     Kmat : np.ndarray
 
     def __init__(self, D1, type1, step1, D2=None,type2=None,step2=None):
@@ -100,8 +105,8 @@ class SingleLayer(Operator):
             X2 = General_tools.tensorplus(E[1,:],-D[1,:])
             K = Operator.green(X1,X2) @ np.diag(sigma)
         else:
-            N = D.shape()[1]
-            K = np.zeros(N,N)
+            N = D.shape[1]
+            K = np.zeros((N,N))
             for i in range(N):
                 K[i, 0:i] = sigma[0:i] * Operator.green(D[0, i] - D[0, 0:i], D[1, i] - D[1, 0:i])
                 K[i, i+1:N] = sigma[i+1:N] * Operator.green(D[0, i] - D[0, i+1:N], D[1, i] - D[1, i+1:N])
