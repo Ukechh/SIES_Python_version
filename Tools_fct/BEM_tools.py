@@ -15,3 +15,20 @@ def P1_basis(M,m):
     u = u.T
     return u
 
+def P1_derivative(M,m,L):
+    if M % m != 0:
+        raise ValueError("The number of boundary points must be a multiplier of the step length")
+    N = M /m
+    du = np.zeros((N,M))
+    
+    dhat = np.zeros(M)
+    dhat[0:2*m+1] = np.concatenate((np.ones(m),[0],-np.ones(m)))
+
+    du[0,:] = np.roll(dhat,shift=-m)
+    for i in range(1,N):
+        du[i,:] = np.roll(du[i-1,:], shift=m)
+
+    du = M / (L*m) * du.T
+    return du   
+
+

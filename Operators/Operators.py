@@ -58,7 +58,8 @@ class Operator(ABC):
         return math.floor(self.D1.get_nbpts() / self.stepBEM1)
     def get_nbBEM2(self):
         return math.floor(self.D2.get_nbpts() / self.stepBEM2)
-    
+    def get_stiffmat(self):
+        return self.stiffmat
     def fwd(self, f):
         return self.Kmat @ self.Psi @ f
     
@@ -237,5 +238,54 @@ class dSLdn(Operator):
         raise SyntaxError("Method not implemented because of the jump!")
 
 class dDLdn(Operator):
+    hypersing = 0
     def __init__(self, D1, type1, step1, D2=None, type2=None, step2=None):
         super().__init__(D1, type1, step1, D2, type2, step2)
+        if self.D1 != self.D2:
+            self.Kmat = dDLdn.make_kernel_matrix(self.D1.points, self.D1.normal, self.D1.sigma, self.D2.points, self.D2.normal)
+        else:
+            self.hypersing = 1
+            if self.typeBEM1 == 'P0':
+                raise TypeError("P0 boundary element is inappropriate for this operator")
+            elif self.typeBEM1 == 'P1':
+                self.Psi = BEM.P1_derivative(self.D1.get_nbpts, self.stepBEM1, 2*np.pi)
+            else:
+                raise TypeError("Only P1 elements are supported in this operator")
+            
+            if self.typeBEM2 == 'P0':
+                raise TypeError("P0 boundary element is inappropriate for this operator")
+            elif self.typeBEM2 == 'P1':
+                self.Phi = BEM.P1_derivative(self.D2.get_nbpts, self.stepBEM2, 2*np.pi)
+            else:
+                raise TypeError("Only P1 elements are supported in this operator")
+            self.Psi_t = self.Psi.T
+            self.Phi_t = self.Phi.T
+            self.Kmat = np.array([])
+    def fwd(self,f):
+        if self.D1 == self.D2:
+            raise TypeError("This operator is not defined for identical boundaries")
+        else:
+            return Operator.fwd(self,f)
+    
+    def apply_stiffmat(self,f):
+        K = self.get_stiffmat()
+        return K @ f
+    
+    def get_stiffmat(self):
+        if self.hypersing:
+            sigma_diag = np.diag(self.D1.sigma)
+            Smat = SingleLayer.make_kernel_matrix(self.D1.points, self.D1.sigma)
+            return self.Phi_t @ sigma_diag @ (Smat @ self.Psi)
+        else:
+            return super().get_stiffmat()
+    @staticmethod
+    def make_kernel_matrix(D,normal_D, sigma_D, E, normal_E):
+        _, H = green.Green2D_Hessian(E,D)
+        normal_E_block = np.hstack( ( np.diag(normal_E[0, :]), np.diag(normal_E[1, :]) ) )
+        normal_D_block = np.vstack( ( np.diag(normal_D[0,:]),np.diag(normal_D[1,:]) ) )
+        Hn = -normal_E_block @ H @ normal_D_block
+        K = Hn @ np.diag(sigma_D) 
+        return K
+    @staticmethod
+    def eval():
+        raise KeyError("Method not implemented")
