@@ -165,3 +165,18 @@ class DoubleLayer(Operator):
 class Kstar(Operator):
     def __init__(self,D1,type1,step1,D2=None,type2=None,step2=None):
         super().__init__(D1, type1, step1, D2, type2, step2)
+        self.Kmat = Kstar.make_kernel_matrix(D1.points,D1.tvec,D1.avec,D1.normal,D1.sigma)
+    
+    @staticmethod
+    def make_kernel_matrix(D,tvec,avec,normal,sigma):
+        M = D.shape[1]
+        Ks = np.zeros((M,M))
+        tvec_norm_sq = np.linalg.norm(tvec,axis=0)**2
+        for j in range(M):
+            xy = np.dot((D[0,j]-D[0,:]),normal[0,:]) + np.dot((D[1,j]-D[1,:]),normal[1,:])
+            
+
+
+
+
+        return np.array([1])
