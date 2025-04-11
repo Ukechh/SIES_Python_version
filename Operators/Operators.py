@@ -164,7 +164,7 @@ class DoubleLayer(Operator):
     
 class Kstar(Operator):
     def __init__(self,D1,type1,step1,D2=None,type2=None,step2=None):
-        super().__init__(D1, type1, step1, D2, type2, step2)
+        super().__init__(D1,type1,step1,D2,type2,step2)
         self.Kmat = Kstar.make_kernel_matrix(D1.points,D1.tvec,D1.avec,D1.normal,D1.sigma)
     
     @staticmethod
@@ -173,10 +173,69 @@ class Kstar(Operator):
         Ks = np.zeros((M,M))
         tvec_norm_sq = np.linalg.norm(tvec,axis=0)**2
         for j in range(M):
-            xy = np.dot((D[0,j]-D[0,:]),normal[0,:]) + np.dot((D[1,j]-D[1,:]),normal[1,:])
-            
+            xy = (D[:,j]-D)
+            xdoty = xy[0,:]*normal[0,j]+ xy[1,:]*normal[1,j]
+            norm_xy_sq = np.linalg.norm(xy,axis = 0) ** 2
 
+            Ks[j,0:j] = 1/ (2*np.pi) * xdoty[0:j] * (sigma[0:j]) / norm_xy_sq[0:j]
+            Ks[j,j+1:M] = 1/ (2*np.pi) * xdoty[j+1:M] * (sigma[j+1:M]) / norm_xy_sq[j+1:M]
+            Ks[j,j] = 1/ (2*np.pi) * ((-1) / 2 )* np.dot(avec[:,j],normal[:,j]) / tvec_norm_sq[j] * sigma[j]
+        return Ks
+    @staticmethod
+    def eval(D,F):
+        #input: 
+        # D a C2 boundary
+        # F function defined on D
+        Ks = Kstar.make_kernel_matrix(D.points, D.tvec, D.avec, D.normal, D.sigma)
+        return Ks @ F
+    
+class Ident(Operator):
+     
+    def __init__(self,D,type1,step1,type2=None,step2=None):
+        super().__init__(D, type1, step1, type2=type2, step2=step2)
+        self.Kmat = np.eye(D.get_nbpts())
+    
+    @staticmethod
+    def make_kernel_matrix(m):
+        return np.eye(m)
+    @staticmethod
+    def eval(F):
+        return F
+class LmKstarinv(Operator):
+    def __init__(self, l, D, type, step):
+        super().__init__(D,type,step,D,type,step)
+        self.Kmat = LmKstarinv.make_kernel_matrix(l, D.points, D.tvec, D.normal, D.avec, D.sigma)
+    
+    @staticmethod
+    def make_kernel_matrix(l, D, tvec, avec, normal, sigma):
+        if abs(l) < 1/2:
+            raise ValueError("The operator is not defined for this value of lambda!")
+        Ks = Kstar.make_kernel_matrix(D,tvec,avec,normal,sigma)
+        A = l * np.eye(D.shape[1]) - Ks
+        Kmat = np.linalg.inv(A)
+        return Kmat
+    @staticmethod
+    def eval():
+        raise SyntaxError("Method not implemented!")
 
+class dSLdn(Operator):
+    def __init__(self, D1, type1, step1, D2, type2=None, step2=None):
+        super().__init__(D1, type1, step1, D2, type2, step2)
+        if D1 == D2:
+            raise ValueError("This operator is not defined for identical boundaries!")
+        self.Kmat = dSLdn.make_kernel_matrix(D1.points, D1.sigma, D2.points, D2.normal)
+    
+    @staticmethod
+    def make_kernel_matrix(D, sigma_D, E, normal_E):
+        Gx, Gy = green.Green2D_grad(E, D)
+        Kx = normal_E[0,:] @ Gx 
+        Ky = normal_E[1,:] @ Gy 
+        K = np.diag(Kx+Ky) @ np.diag(sigma_D)
+        return K
+    @staticmethod
+    def eval():
+        raise SyntaxError("Method not implemented because of the jump!")
 
-
-        return np.array([1])
+class dDLdn(Operator):
+    def __init__(self, D1, type1, step1, D2=None, type2=None, step2=None):
+        super().__init__(D1, type1, step1, D2, type2, step2)
