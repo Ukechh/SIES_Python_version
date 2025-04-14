@@ -77,3 +77,9 @@ class mconfig:
         plt.legend()
         plt.axis('equal')
         plt.show()
+
+class Concentric(mconfig):
+    nbDirac : int
+    neutSrc : np.ndarray
+    neutCoeff : np.ndarray
+    pass
