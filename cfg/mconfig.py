@@ -82,4 +82,42 @@ class Concentric(mconfig):
     nbDirac : int
     neutSrc : np.ndarray
     neutCoeff : np.ndarray
-    pass
+    neutRad : float
+
+    radius_src : float
+    radius_rcv : float
+    equispaced = 0 
+
+    def __init__(self, Z, Rs, Ns, Rr, Nr, viewmode = np.array([1,2*np.pi, 2*np.pi]), grouped = 0, neutCoeff = np.ones(1), neutRad=0.01):
+        self.neutRad = neutRad
+        if len(neutCoeff) <= 1:
+            neutCoeff = np.ones(1)
+        else:
+            if neutCoeff.sum() != 0 or abs(neutCoeff).max() ==0:
+                raise ValueError("Coefficients of Diracs must be non zero and satisfy the zero sum condition")
+            self.neutCoeff = neutCoeff
+        Na = viewmode[0]
+        theta = viewmode[1]
+        aov = viewmode[2]
+
+        Xs, _, Xscell = src_rcv_circle(Na, Ns, Rs, Z, theta, aov)
+        Xr, _, Xrcell = src_rcv_circle(Na, Nr, Rr, Z, theta, aov)
+
+        self._center = Z
+        self.radius_src = Rs
+        self.radius_rcv = Rr
+
+        if grouped:
+            self.Ng = Na
+            self.__src = Xscell
+            self.__rcv = Xrcell
+        else:
+            self.Ng = 1
+            self.__src = Xs
+            self.__rcv = Xr
+
+        if self.Ng == 1 and theta == 2*np.pi:
+            self.equispaced = 1
+    
+    def plot(self, *args, **kwargs):
+        pass
