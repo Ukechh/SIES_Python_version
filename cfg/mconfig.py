@@ -18,7 +18,7 @@ class mconfig:
     _Nr : int
     _Ns_total : int
     _Nr_total : int
-    _data_dim : int
+    data_dim : int
 
     #Getter methods
 

@@ -1,12 +1,12 @@
 import numpy as np
 from figure.C2Boundary.C2Boundary import C2Bound
-from cfg import mconfig
+from cfg.mconfig import mconfig
 from abc import ABC, abstractmethod
 
 class SmallInclusion(ABC):
     _D : list[C2Bound]
     _nbIncl : int
-    _cfg : str
+    _cfg : mconfig
 
     def __init__(self, D, cfg):
         if D.shape[0] == 1:
@@ -43,5 +43,5 @@ class SmallInclusion(ABC):
         # PLot the acquisition system
         self.cfg.plot(*args, **kwargs)
     @abstractmethod
-    def data_simulation(self):
+    def data_simulation(self, *args, **kwargs) -> tuple[np.ndarray, np.ndarray]:
         pass
