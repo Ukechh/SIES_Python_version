@@ -1,37 +1,47 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+
 import numpy as np
+from figure.C2Boundary.C2Boundary import C2Bound
 
-class Ellipse:
-
-    nature = 'figure';
-    R = np.array([[0,-1],[1,0]]);
-    def __init__(self,a=1.0,b=1.0,phi=0.0, NbPts=100):
+class Ellipse(C2Bound):
+    R = np.array([[0, 1], [-1, 0]])
+    def __init__(self, a=1.0, b=1.0, phi=0.0, NbPts=100):
         if a < b:
-            raise ValueError('Value error: the semi-major axis must be longer than the semi-minor one.');
+            raise ValueError("Value error: the semi-major axis must be longer than the semi-minor one.")
+
         self.axis_a = a
         self.axis_b = b
         self.phi = phi
         self.nb_points = NbPts
-        self.theta = np.linspace(0, 2*np.pi,NbPts)
-        x = a * np.cos(self.theta)
-        y = b * np.sin(self.theta)
-        self.boundary_points = np.vstack((x,y))
-        tx = -a * np.sin(self.theta)
-        ty = b * np.cos(self.theta)
-        self.tvec = np.vstack((tx,ty))
-        ax = -x
-        ay = -y
-        self.avec = np.vstack((ax,ay))  
-        normal = self.R @ self.tvec
-        self.normal = normal / np.linalg.norm(normal, axis = 0)  
+        self._center_of_mass = np.zeros((2,1))
+
+        theta = np.linspace(0, 2 * np.pi, NbPts, endpoint=False)
+        x = a * np.cos(theta)
+        y = b * np.sin(theta)
+        points = self._center_of_mass + np.vstack((x, y))
+
+        tvec = np.vstack((-a * np.sin(theta), b * np.cos(theta)))
+        avec = np.vstack((-a * np.cos(theta), -b * np.sin(theta)))
+
+        normal = self.R @ tvec
+        norm = np.linalg.norm(normal, axis=0, keepdims=True)
+        normal = normal / norm
+
+        name_str = "Circle" if a == b else "Ellipse"
+
+        super().__init__(points, tvec, avec, normal, self._center_of_mass, name_str)
     
     def get_points(self):
-        return self.boundary_points
+        return self._points
     def get_normal(self):
-        return self.normal
+        return self._normal
     def get_tvec(self):
-        return self.tvec
+        return self._tvec
     def get_avec(self):
-        return self.avec
+        return self._avec
 
 
 class Banana:

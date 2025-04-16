@@ -27,7 +27,7 @@ def make_block_matrix(D,V=None):
             raise ValueError('Inclusions must be mutually disjoint.')
     KsdS = np.empty((nbIncl, nbIncl), dtype=object)
     for n in range(nbIncl):
-        KsdS[n][n] = -Operators.Kstar.make_kernel_matrix(D[n].points, D[n].tvec, D[n].normal, D[n].avec, D[n].sigma)
+        KsdS[n][n] = -Operators.Kstar.make_kernel_matrix(D[n]._points, D[n]._tvec, D[n]._normal, D[n]._avec, D[n].sigma)
         for m in range(nbIncl):
             if m != n:
                 KsdS[m][n] = -Operators.dSLdn.make_kernel_matrix(D[n].points, D[n].sigma, D[m].points, (D[m].normal)*V[m] )

@@ -174,7 +174,7 @@ class Kstar(Operator):
         Ks = np.zeros((M,M))
         tvec_norm_sq = np.linalg.norm(tvec,axis=0)**2
         for j in range(M):
-            xy = (D[:,j]-D)
+            xy = (D[:,j].reshape(2,1)-D)
             xdoty = xy[0,:]*normal[0,j]+ xy[1,:]*normal[1,j]
             norm_xy_sq = np.linalg.norm(xy,axis = 0) ** 2
 

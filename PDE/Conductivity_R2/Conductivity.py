@@ -25,12 +25,12 @@ class Conductivity(SmallInclusion):
         if sidx is None:
             sidx = np.array([self.cfg._Ns_total])
         npts = self._D[0]._nb_points
-        r = np.zeros((npts, self._nbIncl, len(sidx)))
+        r = np.zeros((npts, self._nbIncl, sidx.shape[0]))
 
         if isinstance(self.cfg, mconfig.Concentric) and self.cfg.nbDirac > 1:
             for i in range(self._nbIncl):
-                toto = np.zeros((len(sidx), npts))
-                for s in range(len(sidx)):
+                toto = np.zeros((sidx.shape[0], npts))
+                for s in range(sidx.shape[0]):
                     psrc = self.cfg.neutSrc[sidx[s]]
                     G = green.Green2D_Dn(psrc, self._D[i].points, self._D[i].normal)
                     neutCoeff = np.reshape(self.cfg.neutCoeff, (1, -1))
@@ -42,7 +42,7 @@ class Conductivity(SmallInclusion):
                 toto = green.Green2D_Dn(src, self._D[i].points, self._D[i].normal)
                 r[:, i, :] = toto.T
 
-        r = r.reshape(npts * self._nbIncl, len(sidx))
+        r = r.reshape(npts * self._nbIncl, sidx.shape[0])
         return r
 
 
@@ -94,7 +94,7 @@ class Conductivity(SmallInclusion):
                 toto = np.zeros((self._cfg._Ns_total, self._cfg._Nr))
                 
                 for s in range(self._cfg._Ns_total):
-                    rcv = self._cfg.__rcv[s]
+                    rcv = self._cfg._rcv[s]
                     toto[s,:] = SingleLayer.eval(self._D[i], Phi[i][:,s], rcv)
                 MSR += toto
 
@@ -112,7 +112,7 @@ class Conductivity(SmallInclusion):
             mask *= toto
         Phi = self.compute_Phi(f,s)
 
-        Hs = green.Green2D(Z, self._cfg.__src[s])
+        Hs = green.Green2D(Z, self._cfg._src[s])
 
         V = Hs.reshape(1, -1)  # 1D row vector
         for i in range(self._nbIncl):
@@ -122,7 +122,7 @@ class Conductivity(SmallInclusion):
         return F, F_bg, Sx, Sy, mask
     
     def plot_field(self, s, F, F_bg, Sx, Sy, nbLine, *args, **kwargs):
-        src = self._cfg.__src[s]
+        src = self._cfg._src[s]
 
         fig, axs = plt.subplots(2, 2, figsize=(12, 10))
 

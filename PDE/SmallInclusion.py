@@ -4,13 +4,14 @@ from cfg.mconfig import mconfig
 from abc import ABC, abstractmethod
 
 class SmallInclusion(ABC):
-    _D : list[C2Bound]
     _nbIncl : int
     _cfg : mconfig
 
     def __init__(self, D, cfg):
+        self._nbIncl = 0
+        self._D = np.empty(0, dtype=object)
         if D.shape[0] == 1:
-            self.addInclusion(D)
+            self.addInclusion(D[0])
         else:
             for i in range(D.shape[0]):
                 self.addInclusion(D[i])
@@ -18,16 +19,19 @@ class SmallInclusion(ABC):
             raise TypeError("must be an object of acq.mconfig")
         self.cfg = cfg
 
-    def addInclusion(self,D):
-        if not isinstance(D,C2Bound):
+    def addInclusion(self, D):
+        if not isinstance(D, C2Bound):
             raise TypeError('Type error: the inclusion must be an object of C2boundary')
+        
         if self._nbIncl >= 1:
-            if self._D[self._nbIncl-1]._nb_points != D._nb_points:
+            last_D = self._D [self._nbIncl - 1]
+            if last_D._nb_points != D._nb_points:
                 raise ValueError('All inclusions must have the same number of boundary discretization points')
             
             if not self.check_inclusions(D):
                 raise ValueError("Inclusions must be separated from each other")
-        self._D.append(D)
+               
+        self._D = np.hstack((self._D, np.array([D], dtype=object)))
         self._nbIncl += 1
     
     def check_inclusions(self, D):

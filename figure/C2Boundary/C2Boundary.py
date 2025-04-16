@@ -13,11 +13,11 @@ from figure.C2Boundary import Boundary_methods as bm
 from Tools_fct import convfix
 
 class C2Bound:
-    def __init__(self, points, tvec, avec, normal, npts=100, nstr= None, com= None):
+    def __init__(self, points, tvec, avec, normal,  com= None, nstr= None, npts=100):
         self._points = points;
         self._tvec = tvec;
         self._avec = avec;
-        self.__normal = normal;
+        self._normal = normal;
         self._nb_points = npts;
         
         flag = self.check_sampling(points)
@@ -73,7 +73,7 @@ class C2Bound:
 
     @property
     def normal(self):
-        return self.__normal
+        return self._normal
 
     def tvec_norm(self):
         return self._tvec_norm
@@ -123,7 +123,7 @@ class C2Bound:
         new_boundary._points = rot @ self._points
         new_boundary._center_of_mass = rot @ self._center_of_mass
         new_boundary._tvec = rot @ self._tvec
-        new_boundary.__normal = rot @ self.__normal
+        new_boundary._normal = rot @ self._normal
         new_boundary._avec = rot @ self._avec
         return new_boundary
     
@@ -137,7 +137,7 @@ class C2Bound:
         sub._nb_points = max(idx.shape);
         sub._tvec = self._tvec[:,idx];
         sub._avec = self._avec[:,idx];
-        sub.__normal = self.__normal[:,idx];
+        sub._normal = self._normal[:,idx];
         return sub
 
     def isinside(self, x):
@@ -246,7 +246,7 @@ class C2Bound:
         theta0 = self.get_theta()
         box = self.get_box()
         if abs(epsilon) > 0:
-            D = self._points + epsilon*np.cos(p*theta0)*self.__normal
+            D = self._points + epsilon*np.cos(p*theta0)*self._normal
             if n > 0:
                 k = np.ones(1,n) / n
                 mode = 'same'
@@ -280,7 +280,7 @@ class C2Bound:
                 R = np.eye(2)
             else:
                 R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
-            D = self._points + epsilon*(R@self.__normal)*H
+            D = self._points + epsilon*(R@self._normal)*H
             D1, tvec, avec,normal = bm.rescale(D, theta0, self._nb_points)
             new_boundary = C2Bound(D1,tvec,avec,normal,com=[], nstr=self._name_str)
         else:
