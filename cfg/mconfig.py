@@ -50,10 +50,10 @@ class mconfig:
         if not isinstance(sidx, np.ndarray):
             sidx = np.array([sidx])
         r = np.zeros((2, len(sidx)))
-        for s in range(len(sidx)):
-            gid, sid = self.src_query(sidx[s])
-            toto = self._src[gid]
-            r[:,s] = toto[:, sid]
+        for i, s in enumerate(sidx):
+            gid, sid = self.src_query(s)
+            toto = self._src[gid] # toto becomes the collection of sources of group gid
+            r[:,i] = toto[:, sid] #We extract the s-th source
         return r
       
     def rcv(self,s):
@@ -147,7 +147,6 @@ class Concentric(mconfig):
     def nbDirac(self):
         return self.neutCoeff.shape[0]
     
-    @property
     def neutSrc(self, s=0):
         psrc = self.src(s)
         if self.nbDirac == 1:

@@ -23,26 +23,26 @@ class Conductivity(SmallInclusion):
     
     def compute_dGdn(self, sidx = None ):
         if sidx is None:
-            sidx = np.arange(self.cfg._Ns_total)
+            sidx = np.arange(self._cfg._Ns_total)
         npts = self._D[0]._nb_points
-        r = np.zeros((npts, self._nbIncl, len(sidx) ))
-
-        if isinstance(self.cfg, mconfig.Concentric) and self.cfg.nbDirac > 1:
+        r = np.zeros((npts, self._nbIncl, len(sidx)))
+        if isinstance(self._cfg, mconfig.Concentric) and self._cfg.nbDirac > 1:
+            neutCoeff = self._cfg.neutCoeff
+            neutCoeff = np.reshape(neutCoeff, (1, -1))
             for i in range(self._nbIncl):
                 toto = np.zeros((len(sidx), npts))
                 for s in range(len(sidx)):
-                    psrc = self.cfg.neutSrc[:,sidx[s]].reshape(2,1)
+                    psrc = self._cfg.neutSrc(sidx[s])
                     G = green.Green2D_Dn(psrc, self._D[i].points, self._D[i].normal)
-                    neutCoeff = np.reshape(self.cfg.neutCoeff, (1, -1))
-                    toto[s, :] = neutCoeff @ G
-                r[:, i, :] = toto.T
+                    toto[s , :] = neutCoeff @ G
+                r[:,i,:] = toto.T
         else:
-            src = self.cfg.src(sidx)
+            src = self._cfg.src(sidx)
             for i in range(self._nbIncl):
-                toto = green.Green2D_Dn(src, self._D[i].points, self._D[i].normal)
+                toto = green.Green2D_Dn(src, self._D[0].points, self._D[0].normal)
                 r[:, i, :] = toto.T
-
-        r = r.reshape(npts * self._nbIncl, len(sidx))
+        
+        r = r.reshape(npts*self._nbIncl, len(sidx))
         return r
 
 

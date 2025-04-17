@@ -17,7 +17,7 @@ class SmallInclusion(ABC):
                 self.addInclusion(D[i])
         if not isinstance(cfg, mconfig):
             raise TypeError("must be an object of acq.mconfig")
-        self.cfg = cfg
+        self._cfg = cfg
 
     def addInclusion(self, D):
         if not isinstance(D, C2Bound):
@@ -45,7 +45,7 @@ class SmallInclusion(ABC):
         for n in range(self._nbIncl):
             self._D[n].plot(*args,**kwargs)
         # PLot the acquisition system
-        self.cfg.plot(*args, **kwargs)
+        self._cfg.plot(*args, **kwargs)
     @abstractmethod
     def data_simulation(self, *args, **kwargs) -> tuple[np.ndarray, np.ndarray]:
         pass
