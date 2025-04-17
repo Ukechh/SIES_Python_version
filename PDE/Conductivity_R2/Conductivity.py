@@ -23,15 +23,15 @@ class Conductivity(SmallInclusion):
     
     def compute_dGdn(self, sidx = None ):
         if sidx is None:
-            sidx = np.array([self.cfg._Ns_total])
+            sidx = np.arange(self.cfg._Ns_total)
         npts = self._D[0]._nb_points
-        r = np.zeros((npts, self._nbIncl, sidx.shape[0]))
+        r = np.zeros((npts, self._nbIncl, len(sidx) ))
 
         if isinstance(self.cfg, mconfig.Concentric) and self.cfg.nbDirac > 1:
             for i in range(self._nbIncl):
-                toto = np.zeros((sidx.shape[0], npts))
-                for s in range(sidx.shape[0]):
-                    psrc = self.cfg.neutSrc[sidx[s]]
+                toto = np.zeros((len(sidx), npts))
+                for s in range(len(sidx)):
+                    psrc = self.cfg.neutSrc[:,sidx[s]].reshape(2,1)
                     G = green.Green2D_Dn(psrc, self._D[i].points, self._D[i].normal)
                     neutCoeff = np.reshape(self.cfg.neutCoeff, (1, -1))
                     toto[s, :] = neutCoeff @ G
@@ -42,7 +42,7 @@ class Conductivity(SmallInclusion):
                 toto = green.Green2D_Dn(src, self._D[i].points, self._D[i].normal)
                 r[:, i, :] = toto.T
 
-        r = r.reshape(npts * self._nbIncl, sidx.shape[0])
+        r = r.reshape(npts * self._nbIncl, len(sidx))
         return r
 
 
@@ -83,8 +83,8 @@ class Conductivity(SmallInclusion):
         self.__dGdn = self.compute_dGdn()
 
     #Simulation Methods
-    def data_simulation(self, f=np.zeros(1)):
-        out_MSR = np.empty(len(f))
+    def data_simulation(self, f):
+        out_MSR = np.empty(len(f), dtype=object)
         f_idx = 0
         for freq in f:
             Phi = self.compute_Phi(freq)

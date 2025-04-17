@@ -7,9 +7,10 @@ from itertools import combinations
 from Operators import Operators
 
 def lbda(cnd, pmtt = np.array([]), freq=0.0):
+    freq = np.atleast_1d(freq) #transform the float into an array if it isnt already
     if pmtt.shape[0] == 0:
         pmtt = np.zeros_like(cnd)
-    if (not isinstance(freq, float)) or freq < 0:
+    if not np.issubdtype(freq.dtype, np.floating) or np.any(freq < 0):
         raise ValueError("Frequency must be a positive scalar")  
     if np.any((cnd==1) | (cnd< 0)):
         raise ValueError('Invalid value of conductivity')

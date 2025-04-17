@@ -41,10 +41,8 @@ class mconfig:
         return src, rcv
     def src_query(self,s):
         #Return the group index of a source s
-        if not isinstance(s, int) or s > self._Ns_total or s < 1:
-            raise ValueError("Non-scalar source index or source index out of range")
-        gid = math.floor((s-1) / self._Ns)
-        sid = s - (gid-1) * self._Ns
+        gid = math.floor(s / self._Ns)
+        sid = s % self._Ns
         return gid, sid
 
     def src(self, sidx):
@@ -56,10 +54,12 @@ class mconfig:
             gid, sid = self.src_query(sidx[s])
             toto = self._src[gid]
             r[:,s] = toto[:, sid]
-        return r   
+        return r
+      
     def rcv(self,s):
         #Coordinates of receivers corresponding to s-th source
         gid, _ = self.src_query(s)
+        
         return self._rcv[gid]
     def all_src(self):
         sr = np.array([])
@@ -149,9 +149,9 @@ class Concentric(mconfig):
     
     @property
     def neutSrc(self, s=0):
-        psrc = self._src[s]
+        psrc = self.src(s)
         if self.nbDirac == 1:
-            return psrc
+            r = psrc.reshape(2,1)
         else:
             r = np.zeros((2,self.nbDirac))
             L = self.radius_src * self.neutRad
@@ -159,8 +159,8 @@ class Concentric(mconfig):
             q = np.array([toto[1], -toto[0]])
             q = L * (q / np.linalg.norm(q))
             for n in range(self.nbDirac):
-                r[:,n] = psrc + n * (q / self.nbDirac)
-            return r
+                r[:,n] = (psrc + n * (q / self.nbDirac)).reshape(2,)
+        return r
 
 class Planewave(mconfig):
     radius_src = 1

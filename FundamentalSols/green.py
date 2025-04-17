@@ -16,8 +16,8 @@ def Green2D_grad(x,y):
     #Inputs: X,Y arrays (2,n), (2,m) of points
     #Output: matrix Gx (Gy) size (n, m) where the (i,j)-th entry is the Dx derivative (resp. Dy) of the 2D Green function
     #evaluated at X[:,i]-Y[:,j]
-    X1 = General_tools.tensorplus(x[0,:],-y[0,:])
-    X2 = General_tools.tensorplus(x[1,:],-y[1,:])
+    X1 = General_tools.tensorplus(x[0,:], -y[0,:])
+    X2 = General_tools.tensorplus(x[1,:], -y[1,:])
     S = X1**2 + X2**2
     Gx = (1 / (2*np.pi)) * X1 / S
     Gy = (1 / (2*np.pi)) * X2 / S
