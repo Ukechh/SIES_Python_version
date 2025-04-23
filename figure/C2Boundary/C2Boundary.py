@@ -32,14 +32,14 @@ class C2Bound:
 
     def get_box(self):
         #This method returns the width and height of the smallest box containing the boundary
-        dd = self._points - np.tile(self._center_of_mass.reshape(-1, 1), (1, self._nb_points));
+        dd = self._points - self._center_of_mass.reshape(-1, 1)
         w = np.max(dd[0, :]) - np.min(dd[0, :]);
         h = np.max(dd[1, :]) - np.min(dd[1, :]);
         return np.array([w, h])
     
     def get_pdirection(self):
         #This method returns the principal direction of the boundary points
-        D = self._points - np.tile(self._center_of_mass.reshape(-1, 1), (1, self._nb_points));
+        D = self._points - self._center_of_mass.reshape(-1, 1)
         M = D @ D.T ;
         U, _, _ = np.linalg.svd(M);
         X = U[:, 0];
@@ -52,7 +52,7 @@ class C2Bound:
 
     def get_diam(self):
         #This method gives the diameter of the smallest ball with center COM and containing the boundary
-        D = self._points - np.tile(self._center_of_mass.reshape(-1, 1), (1, self._nb_points));
+        D = self._points - self._center_of_mass.reshape(-1, 1)
         N = np.linalg.norm(D, axis=0);
         return 2*max(N)
 
@@ -60,6 +60,9 @@ class C2Bound:
         #This method gives a non-tied off parametrization between [0,2pi) of the boundary with the number of points
         return 2 * np.pi * np.arange(self._nb_points) / self._nb_points
     
+    def get_center_of_mass(self):
+        return self._center_of_mass
+
     def cpoints(self):
         #This method returns the points as a complex numbers with x- axis being the real part and y-axis being the imaginary part
         return self._points[0,:] + 1j * self._points[1,:];
@@ -189,8 +192,8 @@ class C2Bound:
         mask = np.ones(Z.shape[1]);
 
         for n in range(Z.shape[1]):
-            dd = np.linalg.norm(self._points- Z[:,n])
-            if dd < epsilon:
+            dd = np.linalg.norm(self._points- Z[:,n].reshape(2,1), axis=0)
+            if dd.any() < epsilon:
                 mask[n] = 0
 
         mask = mask.reshape(Sx.shape)
@@ -243,12 +246,14 @@ class C2Bound:
         return new_boundary
 
     def global_perturbation(self, epsilon, p, n):
+        #Define theta and the box
         theta0 = self.get_theta()
         box = self.get_box()
+
         if abs(epsilon) > 0:
             D = self._points + epsilon*np.cos(p*theta0)*self._normal
             if n > 0:
-                k = np.ones(1,n) / n
+                k = np.ones(n) / n
                 mode = 'same'
                 M = max(D.shape)
                 d1 = np.array([D[0,:], D[0,:], D[0,:]])
@@ -256,15 +261,18 @@ class C2Bound:
 
                 d1 = np.convolve(d1,k,mode)
                 d2 = np.convolve(d2,k,mode)
+
                 D = np.array([d1[M:2*M], d2[M:2*M]])
+            
             D1, tvec, avec, normal = bm.rescale(D, theta0, self._nb_points, box)
+            
             new_boundary = C2Bound(D1,tvec,avec,normal,nstr=self._name_str,com=[])
         else:
             new_boundary= copy.deepcopy(self)
         return new_boundary
     
     def local_perturbation(self, epsilon, pos, width, theta=None):
-        theta0 = self.get_theta
+        theta0 = self.get_theta()
         if abs(epsilon)>0:
             if width > 0.5:
                 raise ValueError("Wrong value of width, must be smaller than 0.5!")
@@ -274,21 +282,24 @@ class C2Bound:
 
             h = lambda t : np.exp(-10*(t**2))
             Lt = max(1,int(math.floor(self._nb_points*width)))
-            toto = np.array( [h(np.linspace(-1,1,Lt)), np.zeros(self._nb_points-Lt)] ) #CORRECTED A PROBLEM THIS IS NOW A LINE ARRAY WITH SHAPE (nbpts,)
+
+            toto = np.concatenate([h(np.linspace(-1,1,Lt)), np.zeros(self._nb_points-Lt)])
+            
             H = np.roll(toto, shift = idx-math.floor(Lt/2),axis=1)
+            
             if theta is None:
                 R = np.eye(2)
             else:
                 R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
             D = self._points + epsilon*(R@self._normal)*H
+            
             D1, tvec, avec,normal = bm.rescale(D, theta0, self._nb_points)
+            
             new_boundary = C2Bound(D1,tvec,avec,normal,com=[], nstr=self._name_str)
         else:
             new_boundary = copy.deepcopy(self)
         return new_boundary
-
-    def get_center_of_mass(self):
-        return self._center_of_mass
+    
     #Static methods
     @staticmethod
     def check_sampling(points):
@@ -329,13 +340,21 @@ class C2Bound:
             box = [w, h]
         
         p1 = convfix.convfix(points[0,:], hw)
+        
         p2 = convfix.convfix(points[1,:], hw)
+        
         D = np.vstack([p1, p2])
+        
         N = max(p1.shape)
+        
         theta = np.linspace(0, 2 * np.pi, N, endpoint=False)
+        
         D1, tvec1,avec1,normal1 = bm.rescale(D,theta,npts,box)
+        
         com1 = C2Bound.get_com(D1, tvec1,normal1)
+        
         D1 = D1 - (com1 - com)[:, np.newaxis]
+
         return D1, tvec1, avec1, normal1
 
 

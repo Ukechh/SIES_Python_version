@@ -6,7 +6,7 @@ import numpy as np
 from itertools import combinations
 from Operators import Operators
 
-def lbda(cnd, pmtt = np.array([]), freq=0.0):
+def lbda(cnd, pmtt = np.array([]), freq=np.array([])):
     freq = np.atleast_1d(freq) #transform the float into an array if it isnt already
     if pmtt.shape[0] == 0:
         pmtt = np.zeros_like(cnd)
@@ -18,20 +18,39 @@ def lbda(cnd, pmtt = np.array([]), freq=0.0):
     toto = cnd + 1j * pmtt * freq
     return (toto + 1) / (2*(toto - 1))
 
-def make_block_matrix(D,V=None):
-    #
+def make_block_matrix(D, V=None):
+    """
+    Parameters:
+    -----------
+    D : list
+        A list of C2Boundary inclusion objects
+    V : ndarray, optional
+        A vector of scaling factors, where `V[m]` scales the normal vector for the off-diagonal 
+        blocks.
+
+    Returns:
+    --------
+    KsdS : list of lists of numpy.ndarray
+        A 2D list representing the block matrix. Each element is a dense 
+        numpy array (2D) corresponding to a block in the matrix. The diagonal 
+        blocks are the Kstar kernel matrix and the off-diagonal
+        blocks are the kernel matrix of the normal derivative of the Single Layer operator
+    """
     nbIncl = len(D)
+    
     if V is None:
         V = np.ones((nbIncl,1))
     for m, n in combinations(range(nbIncl), 2):
         if not D[m].isdisjoint(D[n]):
             raise ValueError('Inclusions must be mutually disjoint.')
-    KsdS = np.empty((nbIncl, nbIncl), dtype=object)
+    
+    KsdS = [[None for _ in range(nbIncl)] for _ in range(nbIncl)]
+
     for n in range(nbIncl):
-        KsdS[n][n] = -Operators.Kstar.make_kernel_matrix(D[n]._points, D[n]._tvec, D[n]._normal, D[n]._avec, D[n].sigma)
+        KsdS[n][n] = -Operators.Kstar.make_kernel_matrix(D[n]._points, D[n]._tvec, D[n]._normal, D[n]._avec, D[n].sigma).todense()
         for m in range(nbIncl):
             if m != n:
-                KsdS[m][n] = -Operators.dSLdn.make_kernel_matrix(D[n].points, D[n].sigma, D[m].points, (D[m].normal)*V[m] )
+                KsdS[m][n] = -Operators.dSLdn.make_kernel_matrix(D[n].points, D[n].sigma, D[m].points, (D[m].normal)*V[m] ).todense()
     return KsdS
 
 def make_system_matrix(D, l):
@@ -40,31 +59,37 @@ def make_system_matrix(D, l):
     return Amat, Acell
 
 def make_system_matrix_fast(KsdS, l):
-    
-    #Construct the matrix A in the system A[phi] = b by reusing the block matrices.
-    
-    #Parameters:
-    #- KsdS: list of lists of 2D numpy arrays (block matrix)
-    #- lam: array-like, contrast constants for each inclusion
-    
-    #Returns:
-    #- Amat: the full system matrix
-    #- Acell: the updated block matrix
-    
+    '''
+    Construct the matrix A in the system A[phi] = b by reusing the block matrices.
+    Parameters:
+    -----------
+    KsdS: List 
+        list of lists of 2D numpy arrays (block matrix)
+    lam: ndarray 
+        contrast constants for each inclusion
+    Returns:
+    -----------
+    Amat: ndarray
+        Full system matrix
+    Acell: List 
+        Updated block matrix
+    '''
     nb_incls = len(KsdS)
-
-    if len(l) < nb_incls:
-        raise ValueError('Value of lambda must be specified for each inclusion.')
-
-    Acell = [row[:] for row in KsdS]
+    Acell = [[np.empty((0,0)) for _ in range(nb_incls)] for _ in range(nb_incls)]
+    
+    for i in range(nb_incls):
+        for j in range(nb_incls):
+            block = KsdS[i][j]
+            if not isinstance(block, np.ndarray):
+                raise TypeError(f"KsdS[{i}][{j}] is not a numpy array, got {type(block)}")
+            Acell[i][j] = block
 
     for n in range(nb_incls):
         size = KsdS[n][n].shape[0]
-        Acell[n][n] = l[n] * np.eye(size) + KsdS[n][n]
+        dtype = KsdS[n][n].dtype
+        Acell[n][n] = l[n] * np.eye(size, dtype=dtype) + KsdS[n][n]
 
-    # Convert block matrix to full matrix
     Amat = np.block(Acell)
-
     return Amat, Acell
     
 

@@ -7,7 +7,7 @@ def tensorplus(X,Y):
     return X + Y 
 
 def bdiag(A,idx):
-    M,N = A.shape()
+    M,N = A.shape
     if idx == 0:
         D = np.zeros((M * N, N))
         for n in range(N):

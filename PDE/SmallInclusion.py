@@ -6,17 +6,27 @@ from abc import ABC, abstractmethod
 class SmallInclusion(ABC):
     _nbIncl : int
     _cfg : mconfig
+    _D : list[C2Bound]
 
     def __init__(self, D, cfg):
+        """
+        Initialises a conductivity problem with D a list of inclusions and cfg a configuration of sources and receivers
+        Parameters:
+        -------------
+        D:  list of inclusions in the problem
+            list[C2Bound]
+        cfg: Configuration of sources and receivers
+            mconfig object
+        """
         self._nbIncl = 0
-        self._D = np.empty(0, dtype=object)
-        if D.shape[0] == 1:
+        self._D = []
+        if len(D) == 1:
             self.addInclusion(D[0])
         else:
-            for i in range(D.shape[0]):
+            for i in range(len(D)):
                 self.addInclusion(D[i])
         if not isinstance(cfg, mconfig):
-            raise TypeError("must be an object of acq.mconfig")
+            raise TypeError("must be an object of cfg.mconfig")
         self._cfg = cfg
 
     def addInclusion(self, D):
@@ -31,7 +41,7 @@ class SmallInclusion(ABC):
             if not self.check_inclusions(D):
                 raise ValueError("Inclusions must be separated from each other")
                
-        self._D = np.hstack((self._D, np.array([D], dtype=object)))
+        self._D.append(D)
         self._nbIncl += 1
     
     def check_inclusions(self, D):

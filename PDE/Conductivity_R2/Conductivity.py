@@ -16,25 +16,49 @@ from Operators.Operators import SingleLayer
 from asymp.CGPT_methods import lbda, make_system_matrix_fast, make_system_matrix, make_block_matrix
 
 class Conductivity(SmallInclusion):
-    __KsdS : np.ndarray
     __dGdn : np.ndarray
     _cnd : np.ndarray
     _pmtt : np.ndarray
     
     def compute_dGdn(self, sidx = None ):
+        """
+        Construct the right hand vector of the given source.
+		If the source is not given, compute for all sources
+        
+        Parameters:
+        -------------
+        sidx:  list of source indices
+            list[int]
+        Returns:
+        -------------
+        dGdn: normal derivative of the fundamental solution with respect to the sources with indices in sidx
+            ndarray
+        """
+        #Define the default value of sidx a list of source indices
         if sidx is None:
-            sidx = np.arange(self._cfg._Ns_total)
+            sidx = list(range(self._cfg._Ns_total))
+        elif isinstance(sidx,int):
+            sidx = [sidx]
+        #Number of points of the inclusion (All inclusions must have the same number of points)
         npts = self._D[0]._nb_points
+        #Create the return object
         r = np.zeros((npts, self._nbIncl, len(sidx)))
+        #Test if the configuration is or not concentric
         if isinstance(self._cfg, mconfig.Concentric) and self._cfg.nbDirac > 1:
+            
             neutCoeff = self._cfg.neutCoeff
+            #Make neutCoeff into a row vector
             neutCoeff = np.reshape(neutCoeff, (1, -1))
+
+            #Loop over each inclusion
             for i in range(self._nbIncl):
                 toto = np.zeros((len(sidx), npts))
+                #Loop over each source index, the 
                 for s in range(len(sidx)):
-                    psrc = self._cfg.neutSrc(sidx[s])
-                    G = green.Green2D_Dn(psrc, self._D[i].points, self._D[i].normal)
+                    psrc = self._cfg.neutSrc(sidx[s]) #We get the positions of the diracs
+                    G = green.Green2D_Dn(psrc, self._D[i].points, self._D[i].normal) # Compute de normal derivative between boundary points and dirac points
                     toto[s , :] = neutCoeff @ G
+
                 r[:,i,:] = toto.T
         else:
             src = self._cfg.src(sidx)
@@ -42,14 +66,15 @@ class Conductivity(SmallInclusion):
                 toto = green.Green2D_Dn(src, self._D[0].points, self._D[0].normal)
                 r[:, i, :] = toto.T
         
-        r = r.reshape(npts*self._nbIncl, len(sidx))
+        r = r.reshape(npts*self._nbIncl, len(sidx)) #Returns a size (npts*nbIncl, indices) matrix
         return r
 
 
     def compute_Phi(self, f, s=None):
         npts = self._D[0]._nb_points
         l = lbda(self._cnd, self._pmtt, f)
-        Amat = make_system_matrix_fast(self.__KsdS, l)
+
+        Amat, _ = make_system_matrix_fast(self.__KsdS, l)
         
         if s is None:
             dGdn = self.__dGdn
@@ -57,13 +82,13 @@ class Conductivity(SmallInclusion):
             dGdn = self.compute_dGdn(s)
         
         phi = np.linalg.solve(Amat, dGdn)
-        Phi = np.empty(self._nbIncl, dtype=object)
+        P = np.empty(self._nbIncl, dtype=object)
         
         idx = 0
         for i in range(self._nbIncl):
-            Phi[i] = phi[idx : idx+npts, :]
+            P[i] = phi[idx : idx+npts, :]
             idx = idx + npts
-        return Phi
+        return P
 
     def __init__(self, D, cnd, pmtt, cfg):
         super().__init__(D, cfg)
@@ -83,7 +108,11 @@ class Conductivity(SmallInclusion):
         self.__dGdn = self.compute_dGdn()
 
     #Simulation Methods
-    def data_simulation(self, f):
+    def data_simulation(self, f=None):
+        #Set the default value of freq
+        if f is None:
+            f = np.zeros(1)
+        #Initialize the output and the index
         out_MSR = np.empty(len(f), dtype=object)
         f_idx = 0
         for freq in f:
@@ -94,7 +123,7 @@ class Conductivity(SmallInclusion):
                 toto = np.zeros((self._cfg._Ns_total, self._cfg._Nr))
                 
                 for s in range(self._cfg._Ns_total):
-                    rcv = self._cfg._rcv[s]
+                    rcv = self._cfg.rcv(s)
                     toto[s,:] = SingleLayer.eval(self._D[i], Phi[i][:,s], rcv)
                 MSR += toto
 
@@ -104,21 +133,28 @@ class Conductivity(SmallInclusion):
         return out_MSR, f
     
     def calculate_field(self, f, s, z0, width, N):
-        epsilon = width / ((N-1)*5)
-        Sx, Sy, mask = self._D[0].boundary_off_mask(z0, width, N, epsilon)
-        Z = np.vstack((Sx.ravel(),Sy.ravel()))
-        for i in range(1, self._nbIncl):
+        epsilon = width / ((N-1)*5) #Compute epsilon
+
+        Sx, Sy, mask = self._D[0].boundary_off_mask(z0, width, N, epsilon) #Compute mask with function input values for the boundary
+
+        Z = np.vstack((Sx.ravel(),Sy.ravel())) #Create a matrix of coordinates using the output of the above function 
+
+        for i in range(1, self._nbIncl): # Create a collective mask using the mask for all other inclusions
             _,_, toto = self._D[i].boundary_off_mask(z0, width, N, epsilon)
             mask *= toto
-        Phi = self.compute_Phi(f,s)
+        Phi = self.compute_Phi(f,s) #Compute phi with the given source and frequencies
+        print("Shape of Phi:", Phi[0].shape)
 
-        Hs = green.Green2D(Z, self._cfg._src[s])
+        Hs = green.Green2D(Z, self._cfg._src[s]) #Compute the background field
+        
+        V = Hs.ravel()
 
-        V = Hs.reshape(1, -1)  # 1D row vector
         for i in range(self._nbIncl):
-            V += SingleLayer.eval(self._D[i], Phi[i], Z)
-        F = V.reshape(N, N)
-        F_bg = Hs.reshape(N, N)
+            ev = SingleLayer.eval(self._D[i], Phi[i], Z)
+            V = V + ev
+        
+        F = 0
+        F_bg = 0
         return F, F_bg, Sx, Sy, mask
     
     def plot_field(self, s, F, F_bg, Sx, Sy, nbLine, *args, **kwargs):

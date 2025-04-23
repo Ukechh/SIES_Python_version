@@ -1,6 +1,6 @@
 import numpy as np
 from Tools_fct import General_tools
-#Functions that compute the fundamental solution of the Laplacian in 2D and 3D
+#Functions that compute the fundamental solution of the Laplacian in 2D
 
 def Green2D(x, y):
     #Inputs: X,Y arrays (2,n), (2,m) of points
@@ -9,7 +9,9 @@ def Green2D(x, y):
        raise ValueError("The inputs must have 2 rows!")
    X1 = General_tools.tensorplus(x[0,:],-y[0,:])
    X2 = General_tools.tensorplus(x[1,:],-y[1,:])
-   G = 1/(4*np.pi)*np.log(X1**2 + X2**2)
+
+   G = 1/(4*np.pi)*np.log(X1**2 + X2**2) #The fundamental solution to the Laplacian is given by G(x,y) = 1/(2*pi) log(|x-y|), here we first do the element-wise substraction
+   #And then use that log(|X|) = log(|X|**2) / 2 to define G 
    return G
 
 def Green2D_grad(x,y):
@@ -34,14 +36,15 @@ def Green2D_Dn(x,y, normal):
     # X: 2 X M points
     # Y, normal: 2 X N boundary points and the normal vector
     # Output:
-    # G is a matrix whose (m, n) term is the normal derivative evlauated at (X(:,m), Y(:,n)).
-    Gx, Gy = Green2D_grad(y,x)
-    Gn = np.diag(normal[0,:])@Gx + np.diag(normal[1,:])@ Gy
+    # G is a matrix of shape (M,N) whose (m,n)-th term is the normal derivative evlauated at (X(:,m), Y(:,n)).
+    Gx, Gy = Green2D_grad(y,x) 
+    Gn = normal[0, :] * Gx + normal[1, :] * Gy 
     return Gn.T
 
+
 def Green2D_Hessian(X,Y):
-    n = X.shape()[1]
-    m = X.shape()[1]
+    n = X.shape[1]
+    m = X.shape[1]
     H = np.zeros(2*n,2*m)
 
     XY1 = General_tools.tensorplus(X[0,:],-Y[0,:])
@@ -60,8 +63,3 @@ def Green2D_Hessian(X,Y):
     H1 = np.block([[M1, M2],
                [M2, M3]])
     return H, H1
-
-def Green3D(x,y):
-    z = x-y;
-    r = (-1/(4*np.pi))*np.linalg.norm(z,2,axis=0)**(-1);
-    return r
