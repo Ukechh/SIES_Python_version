@@ -57,5 +57,5 @@ class SmallInclusion(ABC):
         # PLot the acquisition system
         self._cfg.plot(*args, **kwargs)
     @abstractmethod
-    def data_simulation(self, *args, **kwargs) -> tuple[np.ndarray, np.ndarray]:
+    def data_simulation(self, *args, **kwargs) -> tuple[list, np.ndarray]:
         pass

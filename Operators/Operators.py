@@ -204,18 +204,18 @@ class SingleLayer(Operator):
         D : C2Bound
             Boundary object
         F : numpy.ndarray
-            Density function values on boundary
+            Density function values on boundary (Shape (npts,) or (npts,1))
         X : numpy.ndarray
-            Points where to evaluate the potential
+            Points where to evaluate the potential (Shape (2,m))
             
         Returns:
         --------
         ev : numpy.ndarray
             Potential values at X
         """
-        G = green.Green2D(D.points, X)
-        ev = (D.sigma * F.T) @ G
-        return ev.T
+        G = green.Green2D(D.points, X) #Outputs a (npts, m) matrix
+        ev = (D.sigma * F.T) @ G # Product of (1,npts) (npts,m), output is (1,m)
+        return ev.T #Output shape is (m,1)
     @staticmethod
     def eval_grad(D,F,X):
         """
@@ -435,7 +435,6 @@ class Kstar(Operator):
         
         # Precompute frequent values
         tvec_norm_sq = np.linalg.norm(tvec, axis=0)**2
-        sigma_sparse = sparse.diags(sigma, format='csr')  # Diagonal matrix of weights
         
         for j in range(M):
             # Difference vectors and norm of the vectors
@@ -456,7 +455,7 @@ class Kstar(Operator):
             # Diagonal element
             diag_val = (1 / (2 * np.pi)) * (-0.5) * np.dot(avec[:, j], normal[:, j]) / tvec_norm_sq[j] * sigma[j]
             Ks[j, j] = diag_val
-        return cast(sparse.spmatrix,Ks.tocsr())
+        return cast(sparse.spmatrix,Ks.tocsr()) #Shape of output is (npts,npts) where npts is the number of points of the input C2Bound
     
     @staticmethod
     def eval(D, F):
@@ -520,9 +519,9 @@ class dSLdn(Operator):
         Parameters:
         -----------
         D : ndarray
-            Source boundary points (2 x M array)
+            Source boundary points (2 x npts array)
         sigma_D : ndarray
-            Weights/density values on source boundary (M array)
+            Weights/density values on source boundary (npts array)
         E : ndarray
             Target boundary points (2 x N array)
         normal_E : ndarray
@@ -530,20 +529,20 @@ class dSLdn(Operator):
         Returns:
         --------
         Kmat: spmatrix
-            Sparse kernel matrix in CSR format (N x M)
+            Sparse kernel matrix in CSR format (npts x npts)
         """
         # Compute gradient of Green's function
-        Gx, Gy = green.Green2D_grad(E, D)  # Shapes (N x M)
+        Gx, Gy = green.Green2D_grad(E, D)  # Shapes (N x npts)
         
         # Normal dot product with gradient
-        Kx = normal_E[0,:] @ Gx  # (N,) @ (N x M) -> (M,)
+        Kx = normal_E[0,:] @ Gx  # (N,) @ (N x npts) -> (npts,)
         Ky = normal_E[1,:] @ Gy 
         
         # Diagonal matrices
-        K_diag = sparse.diags(Kx + Ky, format='csr')  # (M x M)
-        sigma_diag = sparse.diags(sigma_D, format='csr')  # (M x M)
+        K_diag = sparse.diags(Kx + Ky, format='csr')  # (npts x npts)
+        sigma_diag = sparse.diags(sigma_D, format='csr')  # (npts x npts)
         
-        return K_diag @ sigma_diag
+        return K_diag @ sigma_diag #Shape (npts,npts)
     @staticmethod
     def eval():
         raise SyntaxError("Method not implemented because of the jump!")

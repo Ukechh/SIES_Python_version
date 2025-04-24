@@ -174,15 +174,25 @@ class C2Bound:
         return Sx, Sy, mask
     
     def boundary_off_mask(self, z0, w, N, epsilon):
-        #This method computes a binary mask of size N X N inside the square region (z0, width) so that the
-		#	 mesh points on the boundary are turned off (0).
-		#	 Inputs:
-		#	 z0: center of the mesh
-		#	 w: width of the mesh
-		#	 N: number of points by side
-		#	 Outputs:
-		#    Sx, Sy: mesh coordinates of boundary points
-		#	 mask: binary mask
+        """
+        This method computes a binary mask of size N X N inside the square region (z0, width) so that the
+		mesh points on the boundary are turned off (0).
+		Parameters:
+         ------------
+		z0: center of the mesh
+            ndarray
+        w: width of the mesh
+            float
+        N: number of points by side
+            int
+        Returns:
+         ------------
+	    Sx, Sy: mesh coordinates of boundary points, each of shape (N,N)
+            ndarray
+		mask: binary mask of shape (N,N)
+            ndarray 
+        
+        """
         sx = np.linspace(z0[0] - w / 2, z0[0] + w / 2, N)
         sy = np.linspace(z0[1] - w / 2, z0[1] + w / 2, N)
         Sx, Sy = np.meshgrid(sx,sy)

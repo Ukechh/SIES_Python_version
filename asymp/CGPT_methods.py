@@ -5,6 +5,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 import numpy as np
 from itertools import combinations
 from Operators import Operators
+from scipy.sparse import csr_matrix
 
 def lbda(cnd, pmtt = np.array([]), freq=np.array([])):
     freq = np.atleast_1d(freq) #transform the float into an array if it isnt already
@@ -47,11 +48,12 @@ def make_block_matrix(D, V=None):
     KsdS = [[None for _ in range(nbIncl)] for _ in range(nbIncl)]
 
     for n in range(nbIncl):
-        KsdS[n][n] = -Operators.Kstar.make_kernel_matrix(D[n]._points, D[n]._tvec, D[n]._normal, D[n]._avec, D[n].sigma).todense()
+        DiagMat = Operators.Kstar.make_kernel_matrix(D[n]._points, D[n]._tvec, D[n]._normal, D[n]._avec, D[n].sigma) # Shape (npts, npts)
+        KsdS[n][n] = -csr_matrix(DiagMat).toarray()
         for m in range(nbIncl):
             if m != n:
-                KsdS[m][n] = -Operators.dSLdn.make_kernel_matrix(D[n].points, D[n].sigma, D[m].points, (D[m].normal)*V[m] ).todense()
-    return KsdS
+                KsdS[m][n] = - (Operators.dSLdn.make_kernel_matrix(D[n].points, D[n].sigma, D[m].points, (D[m].normal)*V[m] )).toarray() # shape (npts,npts)
+    return KsdS #Block matrix of shape (NbIncl, NbIncl) where every block is of shape (npts,npts)
 
 def make_system_matrix(D, l):
     KsdS = make_block_matrix(D)
@@ -65,7 +67,7 @@ def make_system_matrix_fast(KsdS, l):
     -----------
     KsdS: List 
         list of lists of 2D numpy arrays (block matrix)
-    lam: ndarray 
+    l: ndarray 
         contrast constants for each inclusion
     Returns:
     -----------

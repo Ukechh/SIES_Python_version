@@ -1,7 +1,7 @@
 import sys
 import os
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '/../../')))
 
 #We consider the points array as d x n matrix where d is the dimension and n is the number of points
 import numpy as np
@@ -71,23 +71,37 @@ class Conductivity(SmallInclusion):
 
 
     def compute_Phi(self, f, s=None):
+        """
+        Construct the Phi vector for each given frequency and at source s if indicated
+        
+        Parameters:
+        -------------
+        f:  array of tested frequencies
+            ndarray[float]
+        s: source index
+            int
+        Returns:
+        -------------
+        P: List of (npts,1) vectors conaining the Phi vector for each inclusion, list of length nbIncl
+            List[ndarray]
+        """
         npts = self._D[0]._nb_points
         l = lbda(self._cnd, self._pmtt, f)
 
-        Amat, _ = make_system_matrix_fast(self.__KsdS, l)
+        Amat, _ = make_system_matrix_fast(self.__KsdS, l) #Amat is the full system matrix of shape (npts*NbIncl, npts*Nbincl)
         
         if s is None:
             dGdn = self.__dGdn
         else:
-            dGdn = self.compute_dGdn(s)
+            dGdn = self.compute_dGdn(s) #ndarray return type of size (npts*nbIncl, 1) as s is a single integer
         
-        phi = np.linalg.solve(Amat, dGdn)
-        P = np.empty(self._nbIncl, dtype=object)
+        phi = np.linalg.solve(Amat, dGdn) #Returns X = (Amat)^-1 dGdn of shape (npts*nbIncl,1)
+        P = []
         
         idx = 0
         for i in range(self._nbIncl):
-            P[i] = phi[idx : idx+npts, :]
-            idx = idx + npts
+            P.append(phi[idx:idx+npts])
+            idx += npts
         return P
 
     def __init__(self, D, cnd, pmtt, cfg):
@@ -104,57 +118,69 @@ class Conductivity(SmallInclusion):
         
         self._cnd = cnd
         self._pmtt = pmtt
-        self.__KsdS = make_block_matrix(self._D)
-        self.__dGdn = self.compute_dGdn()
+        self.__KsdS = make_block_matrix(self._D) #Block matrix (List of list of ndarrays) of shape (nbIncl,nbIncl) where each matrix is of shape (npts,npts)
+        self.__dGdn = self.compute_dGdn() #nd array of shape (npts*NbIncl,1) 
 
     #Simulation Methods
     def data_simulation(self, f=None):
+        """
+        Simulate the data at the given frequencies
+        
+        Parameters:
+        -------------
+        f:  array of tested frequencies
+            ndarray[float] 
+        Returns:
+        -------------
+        out_MSR: list of data matrices, for each frequency
+            list[ndarray]
+        f: array of tested frequencies
+            ndarray[float]
+        """
+
         #Set the default value of freq
         if f is None:
             f = np.zeros(1)
         #Initialize the output and the index
-        out_MSR = np.empty(len(f), dtype=object)
-        f_idx = 0
+        out_MSR = []
         for freq in f:
-            Phi = self.compute_Phi(freq)
-            MSR = np.zeros((self._cfg._Ns_total, self._cfg._Nr))
+            Phi = self.compute_Phi(freq) #List of length NbIncl
+            MSR = np.zeros((self._cfg._Ns_total, self._cfg._Nr)) #Shape (Ns_total, Nr)
 
             for i in range(self._nbIncl):
-                toto = np.zeros((self._cfg._Ns_total, self._cfg._Nr))
+                toto = np.zeros((self._cfg._Ns_total, self._cfg._Nr)) #Pre initialize the sum matrix to a zeros matrix
                 
                 for s in range(self._cfg._Ns_total):
-                    rcv = self._cfg.rcv(s)
-                    toto[s,:] = SingleLayer.eval(self._D[i], Phi[i][:,s], rcv)
+                    rcv = self._cfg.rcv(s) #Outputs a (2, Nr) ndarray
+                    toto[s,:] = (SingleLayer.eval(self._D[i], Phi[i][:,s], rcv)).T #eval outputs a (Nr,1) ndarray so we transpose so we get the eval  
                 MSR += toto
 
-            out_MSR[f_idx] = MSR
-
-            f_idx += 1 
+            out_MSR.append(MSR) 
         return out_MSR, f
     
     def calculate_field(self, f, s, z0, width, N):
         epsilon = width / ((N-1)*5) #Compute epsilon
 
-        Sx, Sy, mask = self._D[0].boundary_off_mask(z0, width, N, epsilon) #Compute mask with function input values for the boundary
+        Sx, Sy, mask = self._D[0].boundary_off_mask(z0, width, N, epsilon) #Compute mask for the boundary Sx, Sy is of shape (N,N)
 
-        Z = np.vstack((Sx.ravel(),Sy.ravel())) #Create a matrix of coordinates using the output of the above function 
+        Z = np.vstack((Sx.ravel(),Sy.ravel())) #Create a matrix of coordinates of shape (2, N**2)
 
-        for i in range(1, self._nbIncl): # Create a collective mask using the mask for all other inclusions
+        for i in range(1, self._nbIncl): #Create a mask to ignore all other boundaries
             _,_, toto = self._D[i].boundary_off_mask(z0, width, N, epsilon)
             mask *= toto
-        Phi = self.compute_Phi(f,s) #Compute phi with the given source and frequencies
-        print("Shape of Phi:", Phi[0].shape)
+        Phi = self.compute_Phi(f,s) #Compute phi with the given source and frequencies (Output is a list of length NbIncl)
 
-        Hs = green.Green2D(Z, self._cfg._src[s]) #Compute the background field
+        Hs = green.Green2D(Z, self._cfg.src(s)) #Compute the background field, output has shape (N**2, 1)
         
-        V = Hs.ravel()
+        V = Hs.ravel() #V has shape (N**2,)
 
         for i in range(self._nbIncl):
-            ev = SingleLayer.eval(self._D[i], Phi[i], Z)
-            V = V + ev
+            ev = SingleLayer.eval(self._D[i], Phi[i], Z) #Phi[i] has shape (npts,1), Z has shape (2,N**2) output has shape (N**2,1)
+            V += ev.ravel() 
         
-        F = 0
-        F_bg = 0
+        F = V.reshape((N,N)) #Total field
+        F_bg = Hs.reshape((N,N)) #Background field
+
         return F, F_bg, Sx, Sy, mask
     
     def plot_field(self, s, F, F_bg, Sx, Sy, nbLine, *args, **kwargs):
