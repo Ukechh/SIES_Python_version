@@ -40,7 +40,7 @@ class Conductivity(SmallInclusion):
         elif isinstance(sidx,int):
             sidx = [sidx]
         #Number of points of the inclusion (All inclusions must have the same number of points)
-        npts = self._D[0]._nb_points
+        npts = self._D[0].nb_points
         #Create the return object
         r = np.zeros((npts, self._nbIncl, len(sidx)))
         #Test if the configuration is or not concentric
@@ -55,9 +55,9 @@ class Conductivity(SmallInclusion):
                 toto = np.zeros((len(sidx), npts))
                 #Loop over each source index, the 
                 for s in range(len(sidx)):
-                    psrc = self._cfg.neutSrc(sidx[s]) #We get the positions of the diracs
+                    psrc = self._cfg.neutSrc(sidx[s]) #We get the positions of the diracs ( shape (2, nbDirac) )
                     G = green.Green2D_Dn(psrc, self._D[i].points, self._D[i].normal) # Compute de normal derivative between boundary points and dirac points
-                    toto[s , :] = neutCoeff @ G
+                    toto[s , :] = neutCoeff @ G #neutCoeff has shape (1,nbDirac) and G has shape (nbDirac,npts) 
 
                 r[:,i,:] = toto.T
         else:
@@ -85,7 +85,7 @@ class Conductivity(SmallInclusion):
         P: List of (npts,1) vectors conaining the Phi vector for each inclusion, list of length nbIncl
             List[ndarray]
         """
-        npts = self._D[0]._nb_points
+        npts = self._D[0].nb_points
         l = lbda(self._cnd, self._pmtt, f)
 
         Amat, _ = make_system_matrix_fast(self.__KsdS, l) #Amat is the full system matrix of shape (npts*NbIncl, npts*Nbincl)
@@ -145,10 +145,10 @@ class Conductivity(SmallInclusion):
         out_MSR = []
         for freq in f:
             Phi = self.compute_Phi(freq) #List of length NbIncl
-            MSR = np.zeros((self._cfg._Ns_total, self._cfg._Nr)) #Shape (Ns_total, Nr)
+            MSR = np.zeros((self._cfg._Ns_total, self._cfg._Nr), dtype=np.complex128) #Shape (Ns_total, Nr)
 
             for i in range(self._nbIncl):
-                toto = np.zeros((self._cfg._Ns_total, self._cfg._Nr)) #Pre initialize the sum matrix to a zeros matrix
+                toto = np.zeros((self._cfg._Ns_total, self._cfg._Nr), dtype=np.complex128) #Pre initialize the sum matrix to a zeros matrix
                 
                 for s in range(self._cfg._Ns_total):
                     rcv = self._cfg.rcv(s) #Outputs a (2, Nr) ndarray
@@ -159,6 +159,37 @@ class Conductivity(SmallInclusion):
         return out_MSR, f
     
     def calculate_field(self, f, s, z0, width, N):
+        """
+        Compute the total and background fields on a grid centered at `z0`, 
+        excluding the inclusion boundaries, for a given frequency and source.
+
+        Parameters:
+        -----------
+        f : float
+            Frequency at which to evaluate the field.
+        s : int
+            Index of the source.
+        z0 : ndarray of shape (2,)
+            Center of the square computational domain.
+        width : float
+            Width of the square domain centered at `z0`.
+        N : int
+            Number of points for the grid.
+
+        Returns:
+        --------
+        F : ndarray of shape (N, N)
+            Total field (background + scattered) evaluated on the grid.
+        F_bg : ndarray of shape (N, N)
+            Background field only, without scatterers.
+        Sx : ndarray of shape (N, N)
+            X-coordinates of the evaluation grid.
+        Sy : ndarray of shape (N, N)
+            Y-coordinates of the evaluation grid.
+        mask : ndarray of shape (N, N)
+            Boolean mask excluding grid points that are inside any inclusion.
+        """
+        
         epsilon = width / ((N-1)*5) #Compute epsilon
 
         Sx, Sy, mask = self._D[0].boundary_off_mask(z0, width, N, epsilon) #Compute mask for the boundary Sx, Sy is of shape (N,N)
@@ -172,7 +203,7 @@ class Conductivity(SmallInclusion):
 
         Hs = green.Green2D(Z, self._cfg.src(s)) #Compute the background field, output has shape (N**2, 1)
         
-        V = Hs.ravel() #V has shape (N**2,)
+        V = Hs.ravel().astype(np.complex128) #V has shape (N**2,)
 
         for i in range(self._nbIncl):
             ev = SingleLayer.eval(self._D[i], Phi[i], Z) #Phi[i] has shape (npts,1), Z has shape (2,N**2) output has shape (N**2,1)
@@ -184,13 +215,16 @@ class Conductivity(SmallInclusion):
         return F, F_bg, Sx, Sy, mask
     
     def plot_field(self, s, F, F_bg, Sx, Sy, nbLine, *args, **kwargs):
+        
         src = self._cfg._src[s]
 
         fig, axs = plt.subplots(2, 2, figsize=(12, 10))
 
         # Subplot 1: Real part of total field
         cs1 = axs[0, 0].contourf(Sx, Sy, F.real, nbLine)
+        axs[0, 0].contour(Sx, Sy, F.real, nbLine, colors='k', linewidths=0.5)
         axs[0, 0].plot(src[0], src[1], 'gx', *args, **kwargs)
+        
         for i in range(self._nbIncl):
             self._D[i].plot(ax=axs[0, 0], *args, **kwargs)
         axs[0, 0].set_title("Potential field u, real part")
@@ -199,6 +233,7 @@ class Conductivity(SmallInclusion):
 
         # Subplot 2: Imaginary part of total field
         cs2 = axs[0, 1].contourf(Sx, Sy, F.imag, nbLine)
+        axs[0, 1].contour(Sx, Sy, F.real, nbLine, colors='k', linewidths=0.5)
         axs[0, 1].plot(src[0], src[1], 'gx', *args, **kwargs)
         for i in range(self._nbIncl):
             self._D[i].plot(ax=axs[0, 1], *args, **kwargs)
@@ -208,6 +243,7 @@ class Conductivity(SmallInclusion):
 
         # Subplot 3: Real part of perturbed field
         cs3 = axs[1, 0].contourf(Sx, Sy, (F - F_bg).real, nbLine)
+        axs[1, 0].contour(Sx, Sy, F.real, nbLine, colors='k', linewidths=0.5)
         axs[1, 0].plot(src[0], src[1], 'gx', *args, **kwargs)
         for i in range(self._nbIncl):
             self._D[i].plot(ax=axs[1, 0], *args, **kwargs)
@@ -215,18 +251,18 @@ class Conductivity(SmallInclusion):
         axs[1, 0].axis('image')
         fig.colorbar(cs3, ax=axs[1, 0])
 
-        # Subplot 4: Background potential (real)
-        cs4 = axs[1, 1].contourf(Sx, Sy, F_bg, nbLine)
+        # Subplot 4: Background potential (real part)
+        cs4 = axs[1, 1].contourf(Sx, Sy, F_bg.real, nbLine)
+        axs[1, 1].contour(Sx, Sy, F.real, nbLine, colors='k', linewidths=0.5)
         axs[1, 1].plot(src[0], src[1], 'gx', *args, **kwargs)
-        # Optional: show only one inclusion
-        # self._D[0].plot(ax=axs[1, 1], *args, **kwargs)
-        axs[1, 1].set_title("Background potential field U")
+        axs[1, 1].set_title("Background potential field U, real part")
         axs[1, 1].axis('image')
         fig.colorbar(cs4, ax=axs[1, 1])
 
         plt.tight_layout()
         plt.show()
-    
+
+        
 
 
 

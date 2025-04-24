@@ -32,7 +32,7 @@ class Ellipse(C2Bound):
 
         name_str = "Circle" if a == b else "Ellipse"
 
-        super().__init__(points, tvec, avec, normal, self._center_of_mass, name_str)
+        super().__init__(points, tvec, avec, normal, self._center_of_mass, name_str, npts=NbPts)
     
     def get_points(self):
         return self._points

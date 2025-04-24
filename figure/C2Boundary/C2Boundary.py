@@ -13,12 +13,12 @@ from figure.C2Boundary import Boundary_methods as bm
 from Tools_fct import convfix
 
 class C2Bound:
-    def __init__(self, points, tvec, avec, normal,  com= None, nstr= None, npts=100):
+    def __init__(self, points, tvec, avec, normal,  com= None, nstr= None, npts=1):
         self._points = points;
         self._tvec = tvec;
         self._avec = avec;
         self._normal = normal;
-        self._nb_points = npts;
+        self.nb_points = npts;
         
         flag = self.check_sampling(points)
         if not flag:
@@ -58,7 +58,7 @@ class C2Bound:
 
     def get_theta(self):
         #This method gives a non-tied off parametrization between [0,2pi) of the boundary with the number of points
-        return 2 * np.pi * np.arange(self._nb_points) / self._nb_points
+        return 2 * np.pi * np.arange(self.nb_points) / self.nb_points
     
     def get_center_of_mass(self):
         return self._center_of_mass
@@ -72,7 +72,7 @@ class C2Bound:
         return self._points
     @property
     def sigma(self):
-        return 2*np.pi / (self._nb_points) * self._tvec_norm; 
+        return 2*np.pi / (self.nb_points) * self._tvec_norm; 
 
     @property
     def normal(self):
@@ -133,11 +133,11 @@ class C2Bound:
     # Utility methods:
 
     def subset(self, idx):
-        if max(idx.shape) > self._nb_points:
+        if max(idx.shape) > self.nb_points:
             raise ValueError("Value Error: the index of the subset is wrong!");
         sub = copy.deepcopy(self);
         sub._points = self._points[:,idx];
-        sub._nb_points = max(idx.shape);
+        sub.nb_points = max(idx.shape);
         sub._tvec = self._tvec[:,idx];
         sub._avec = self._avec[:,idx];
         sub._normal = self._normal[:,idx];
@@ -161,9 +161,10 @@ class C2Bound:
         return flag
     
     def plot(self, *args, **kwargs):
-       # Plots the boundary points
-       plt.plot(self._points[0, :], self._points[1, :], *args, **kwargs)
-       plt.show()
+        ax = kwargs.pop("ax", None)
+        if ax is None:
+            raise ValueError("An Axes object must be passed using the 'ax' keyword argument.")
+        ax.plot(self._points[0, :], self._points[1, :], *args, **kwargs)
     
     def interior_mesh(self, w, N):
         # This method generates a square mesh centered at the center and compute the mask of
@@ -228,14 +229,14 @@ class C2Bound:
             else:
                 pos = pos % 1
                 w = w % 1
-                idx = max(int(np.floor(pos * self._nb_points)), 1)
-                Lt = max(1, int(np.floor(self._nb_points * w / 2)))
+                idx = max(int(np.floor(pos * self.nb_points)), 1)
+                Lt = max(1, int(np.floor(self.nb_points * w / 2)))
 
-                s1, s2 = 0, self._nb_points
+                s1, s2 = 0, self.nb_points
 
                 if idx - Lt >= 1:
                     s1 = idx - Lt
-                if idx + Lt <= self._nb_points:
+                if idx + Lt <= self.nb_points:
                     s2 = idx + Lt
 
                 q1 = convfix.convfix(self._points[0, s1:s2], hw)
@@ -248,8 +249,8 @@ class C2Bound:
             N = max(p1.shape)
             theta = 2 * np.pi * np.arange(N) / N
 
-            D1, tvec1, avec1, normal1 = bm.rescale(D, theta, self._nb_points, self.get_box(), dspl=None)
-            new_boundary = C2Bound(D1, tvec1, avec1, normal1, self._nb_points)
+            D1, tvec1, avec1, normal1 = bm.rescale(D, theta, self.nb_points, self.get_box(), dspl=None)
+            new_boundary = C2Bound(D1, tvec1, avec1, normal1, self.nb_points)
         else:
             new_boundary = copy.deepcopy(self)
 
@@ -274,7 +275,7 @@ class C2Bound:
 
                 D = np.array([d1[M:2*M], d2[M:2*M]])
             
-            D1, tvec, avec, normal = bm.rescale(D, theta0, self._nb_points, box)
+            D1, tvec, avec, normal = bm.rescale(D, theta0, self.nb_points, box)
             
             new_boundary = C2Bound(D1,tvec,avec,normal,nstr=self._name_str,com=[])
         else:
@@ -288,12 +289,12 @@ class C2Bound:
                 raise ValueError("Wrong value of width, must be smaller than 0.5!")
             pos = pos % 1
             width = width % 1
-            idx = math.floor(pos*self._nb_points)
+            idx = math.floor(pos*self.nb_points)
 
             h = lambda t : np.exp(-10*(t**2))
-            Lt = max(1,int(math.floor(self._nb_points*width)))
+            Lt = max(1,int(math.floor(self.nb_points*width)))
 
-            toto = np.concatenate([h(np.linspace(-1,1,Lt)), np.zeros(self._nb_points-Lt)])
+            toto = np.concatenate([h(np.linspace(-1,1,Lt)), np.zeros(self.nb_points-Lt)])
             
             H = np.roll(toto, shift = idx-math.floor(Lt/2),axis=1)
             
@@ -303,7 +304,7 @@ class C2Bound:
                 R = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
             D = self._points + epsilon*(R@self._normal)*H
             
-            D1, tvec, avec,normal = bm.rescale(D, theta0, self._nb_points)
+            D1, tvec, avec,normal = bm.rescale(D, theta0, self.nb_points)
             
             new_boundary = C2Bound(D1,tvec,avec,normal,com=[], nstr=self._name_str)
         else:

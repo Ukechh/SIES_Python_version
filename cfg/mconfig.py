@@ -194,7 +194,7 @@ class Concentric(mconfig):
             q = np.array([toto[1], -toto[0]])
             q = L * (q / np.linalg.norm(q))
             for n in range(self.nbDirac):
-                r[:,n] = psrc + n * (q / self.nbDirac)
+                r[:, n] = (psrc + n * (q / self.nbDirac)).T
         return r
 
 class Planewave(mconfig):

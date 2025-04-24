@@ -34,13 +34,13 @@ class SmallInclusion(ABC):
             raise TypeError('Type error: the inclusion must be an object of C2boundary')
         
         if self._nbIncl >= 1:
-            last_D = self._D [self._nbIncl - 1]
-            if last_D._nb_points != D._nb_points:
+            last_D = self._D[self._nbIncl - 1]
+            if last_D.nb_points != D.nb_points:
                 raise ValueError('All inclusions must have the same number of boundary discretization points')
             
             if not self.check_inclusions(D):
                 raise ValueError("Inclusions must be separated from each other")
-               
+        
         self._D.append(D)
         self._nbIncl += 1
     
