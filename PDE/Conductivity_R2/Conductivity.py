@@ -12,7 +12,7 @@ import copy
 from PDE.SmallInclusion import SmallInclusion
 from cfg import mconfig
 from FundamentalSols import green
-from Operators.Operators import SingleLayer
+from Operators.Operators import SingleLayer, LmKstarinv
 from asymp.CGPT_methods import lbda, make_system_matrix_fast, make_system_matrix, make_block_matrix
 
 class Conductivity(SmallInclusion):
@@ -199,6 +199,7 @@ class Conductivity(SmallInclusion):
         for i in range(1, self._nbIncl): #Create a mask to ignore all other boundaries
             _,_, toto = self._D[i].boundary_off_mask(z0, width, N, epsilon)
             mask *= toto
+
         Phi = self.compute_Phi(f,s) #Compute phi with the given source and frequencies (Output is a list of length NbIncl)
 
         Hs = green.Green2D(Z, self._cfg.src(s)) #Compute the background field, output has shape (N**2, 1)
@@ -214,6 +215,63 @@ class Conductivity(SmallInclusion):
 
         return F, F_bg, Sx, Sy, mask
     
+
+    def calculate_FFv(self, f, z0, width, N, delta=1):
+        """
+        Compute the far-field expansion v(ξ) = ξ + S_B (λ I - K^*)^{-1} [v](ξ)
+        on a grid centered at `z0` in the ξ = (x - z0)/δ coordinate frame.
+
+        Parameters:
+        -----------
+        f : float
+            Frequency for lambda computation
+        z0 : ndarray of shape (2,)
+            Center of the inclusion (defines ξ = (x - z0) / δ).
+        width : float
+            Width of computational square in ξ-space.
+        N : int
+            Number of points of the grid
+        delta : float
+            Scaling factor
+
+        Returns:
+        --------
+        Vx : ndarray of shape (N, N)
+            x-component of far-field map.
+        Vy : ndarray of shape (N, N)
+            y-component of far-field map.
+        Sx, Sy : ndarrays of shape (N, N)
+            Grid coordinates in ξ-space.
+        mask : ndarray of shape (N, N)
+            Boolean mask for valid evaluation points (outside boundary).
+        """
+
+        epsilon = width / ((N - 1) * 5)
+
+        Sx, Sy, mask = self._D[0].boundary_off_mask(z0, width, N, epsilon)
+        Z = np.vstack((Sx.ravel(), Sy.ravel()))  # shape (2, N**2)
+
+        for i in range(1, self._nbIncl):
+            _, _, toto = self._D[i].boundary_off_mask(z0, width, N, epsilon)
+            mask *= toto
+
+        
+        lam = lbda(cnd=self._cnd, pmtt=self._pmtt, freq=f)
+        #print(f'lambda shape is {lam.shape}')
+        v = Z.copy().astype(np.complex128)
+
+        for i in range(self._nbIncl):
+            phi = np.vstack((LmKstarinv.eval(self._D[i], self._D[i]._normal[0,:], lam[i]), LmKstarinv.eval(self._D[i], self._D[i]._normal[1,:], lam[i])))  # shape (2, NbPts)
+            #print(f'The shape of phi is:{phi.shape}')
+            Sphi = np.vstack((SingleLayer.eval(self._D[i], phi[0,:], Z), SingleLayer.eval(self._D[i], phi[1,:], Z)))  # shape (2, N**2)
+            #print(f'The shape of Sphi is:{Sphi.shape}')
+            v += Sphi  # shape (2, N**2)
+
+        Vx = v[0, :].reshape((N, N))
+        Vy = v[1, :].reshape((N, N))
+
+        return Vx, Vy, Sx, Sy, mask    
+
     def plot_field(self, s, F, F_bg, Sx, Sy, nbLine, *args, **kwargs):
         
         src = self._cfg._src[s]
@@ -255,6 +313,8 @@ class Conductivity(SmallInclusion):
         cs4 = axs[1, 1].contourf(Sx, Sy, F_bg.real, nbLine)
         axs[1, 1].contour(Sx, Sy, F.real, nbLine, colors='k', linewidths=0.5)
         axs[1, 1].plot(src[0], src[1], 'gx', *args, **kwargs)
+        for i in range(self._nbIncl):
+            self._D[i].plot(ax=axs[1, 1], *args, **kwargs)
         axs[1, 1].set_title("Background potential field U, real part")
         axs[1, 1].axis('image')
         fig.colorbar(cs4, ax=axs[1, 1])
@@ -262,7 +322,90 @@ class Conductivity(SmallInclusion):
         plt.tight_layout()
         plt.show()
 
+    def plot_far_field(self, Vx, Vy, Sx, Sy, mask, freq):
+        """
+        Visualizes the real and imaginary parts of the far-field map v(ξ) showing
+        how the identity grid is distorted in both parts with normalized displacement vectors.
+
+        Parameters:
+        -----------
+        Vx, Vy : ndarray (N, N)
+            Mapped coordinates from the far-field expansion.
+        Sx, Sy : ndarray (N, N)
+            Original grid coordinates (ξ-space).
+        mask : ndarray (N, N)
+            Boolean mask of valid evaluation points (outside boundaries).
+        freq : float
+            Frequency used for labeling the plots.
+        """
+
+        mask = mask.astype(bool)
         
+        # Masking invalid points
+        Vx_masked = np.ma.masked_where(~mask, Vx)
+        Vy_masked = np.ma.masked_where(~mask, Vy)
+
+        # Extracting real and imaginary parts for both Vx and Vy
+        Vx_real, Vx_imag = np.real(Vx_masked), np.imag(Vx_masked)
+        Vy_real, Vy_imag = np.real(Vy_masked), np.imag(Vy_masked)
+
+        # Normalizing displacement vectors for real and imaginary parts
+        def normalize_vectors(vx, vy):
+            # Compute magnitude
+            magnitude = np.sqrt(vx**2 + vy**2)
+            # Prevent division by zero by replacing small values with 1e-10
+            magnitude = np.where(magnitude == 0, 1e-10, magnitude)
+            # Normalize vectors
+            return 0.2 * vx / magnitude,0.2* vy / magnitude
+
+        # Normalize displacement vectors (Real part)
+        Vx_real_norm, Vy_real_norm = normalize_vectors(Vx_real - Sx, Vy_real - Sy)
+        # Normalize displacement vectors (Imaginary part)
+        Vx_imag_norm, Vy_imag_norm = normalize_vectors(Vx_imag - Sx, Vy_imag - Sy)
+
+        fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+
+        # Plot Real part of the Far-field (v₁) vs. ξ₁
+        axes[0, 0].contour(Sx, Sy, Sx, colors='lightgray', linewidths=0.5)  # Original vertical lines
+        axes[0, 0].contour(Sx, Sy, Sy, colors='lightgray', linewidths=0.5)  # Original horizontal lines
+        axes[0, 0].contour(Vx_real, Vy_real, Sx, colors='blue')            # Mapped vertical lines
+        axes[0, 0].contour(Vx_real, Vy_real, Sy, colors='red')             # Mapped horizontal lines
+        axes[0, 0].set_title(f'Real part: Deformation of Grid via v(ξ) (f = {freq})')
+        axes[0, 0].set_aspect('equal')
+        axes[0, 0].set_xlabel('Re(v₁(ξ))')
+        axes[0, 0].set_ylabel('Re(v₂(ξ))')
+
+        # Plot Imaginary part of the Far-field (v₁) vs. ξ₁
+        axes[0, 1].contour(Sx, Sy, Sx, colors='lightgray', linewidths=0.5)  # Original vertical lines
+        axes[0, 1].contour(Sx, Sy, Sy, colors='lightgray', linewidths=0.5)  # Original horizontal lines
+        axes[0, 1].contour(Vx_imag, Vy_imag, Sx, colors='blue')           # Mapped vertical lines
+        axes[0, 1].contour(Vx_imag, Vy_imag, Sy, colors='red')            # Mapped horizontal lines
+        axes[0, 1].set_title(f'Imaginary part: Deformation of Grid via v(ξ) (f = {freq})')
+        axes[0, 1].set_aspect('equal')
+        axes[0, 1].set_xlabel('Im(v₁(ξ))')
+        axes[0, 1].set_ylabel('Im(v₂(ξ))')
+
+        # Vector field of displacement (Real part) v(ξ) - ξ (Real) - Normalized
+        axes[1, 0].quiver(Sx[::4, ::4], Sy[::4, ::4], 
+                        Vx_real_norm[::4, ::4], Vy_real_norm[::4, ::4],
+                        scale=1, angles='xy', scale_units='xy', color='green', width=0.003)
+        axes[1, 0].set_title(f'Real part of Normalized Displacement Field: v(ξ) - ξ (f = {freq})')
+        axes[1, 0].set_aspect('equal')
+        axes[1, 0].set_xlabel('ξ₁')
+        axes[1, 0].set_ylabel('ξ₂')
+
+        # Vector field of displacement (Imaginary part) v(ξ) - ξ (Imaginary) - Normalized
+        axes[1, 1].quiver(Sx[::4, ::4], Sy[::4, ::4], 
+                        Vx_imag_norm[::4, ::4], Vy_imag_norm[::4, ::4],
+                        scale=1, angles='xy', scale_units='xy', color='orange', width=0.003)
+        axes[1, 1].set_title(f'Imaginary part of Normalized Displacement Field: v(ξ) - ξ (f = {freq})')
+        axes[1, 1].set_aspect('equal')
+        axes[1, 1].set_xlabel('ξ₁')
+        axes[1, 1].set_ylabel('ξ₂')
+
+        plt.tight_layout()
+        plt.show()
+                
 
 
 

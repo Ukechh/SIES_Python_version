@@ -328,7 +328,12 @@ class C2Bound:
             else:
                 y = points[:,p-2];
                 z = points[:,p];
-            toto = np.dot(z-x,x-y) / (np.linalg.norm(y-x) * np.linalg.norm(z-x))
+            denom = np.linalg.norm(y - x) * np.linalg.norm(z - x)
+            if denom < 1e-14:
+                toto = 0.0
+            else:
+                toto = np.dot(z - x, x - y) / denom
+                
             if toto <= 0:
                 val = 0;
         return val

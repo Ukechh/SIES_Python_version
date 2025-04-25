@@ -8,6 +8,26 @@ from Operators import Operators
 from scipy.sparse import csr_matrix
 
 def lbda(cnd, pmtt = np.array([]), freq=np.array([])):
+    """
+    Compute the parameter lambda(λ) used in boundary integral operators,
+    based on conductivity, permittivity, and frequency.
+
+    Parameters:
+    -----------
+    cnd : ndarray of shape (NbIncl,)
+        Array of conductivities for each inclusion. Values must be > 0 and ≠ 1.
+
+    pmtt : ndarray of shape (NbIncl,), optional
+        Array of permittivities. Defaults to zero if not provided.
+
+    freq : float or ndarray of shape (1,), optional
+        Frequency at which to evaluate λ. Must be a positive float or array-like with one positive value.
+
+    Returns:
+    --------
+    lam : ndarray of shape (NbIncl,)
+        Computed complex λ values corresponding to each inclusion.
+    """
     freq = np.atleast_1d(freq) #transform the float into an array if it isnt already
     if pmtt.shape[0] == 0:
         pmtt = np.zeros_like(cnd)

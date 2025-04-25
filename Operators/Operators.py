@@ -491,20 +491,57 @@ class Ident(Operator):
 class LmKstarinv(Operator):
     def __init__(self, l, D, type, step):
         super().__init__(D,type,step,D,type,step)
-        self.Kmat = LmKstarinv.make_kernel_matrix(l, D.points, D.tvec, D.normal, D.avec, D.sigma)
+        self.Kmat = LmKstarinv.make_kernel_matrix(l, D._points, D._tvec, D._normal, D._avec, D.sigma)
     
     @staticmethod
     def make_kernel_matrix(l, D, tvec, avec, normal, sigma):
-        if abs(l) < 1/2:
+        """
+        l: complex128
+            Lambda
+        D: ndarray
+            points array of shape (2,npts)
+        tvec: ndarray
+            coordinates of tangent vectors
+        avec: ndarray
+            coordinates of acceleration vectors
+        sigma: ndarray
+            weights
+        Returns:
+        -----------
+        Kmat: spmatrix of shape (npts,npts)
+        """
+        if np.linalg.norm(l).any() < 1/2:
             raise ValueError("The operator is not defined for this value of lambda!")
         Ks = Kstar.make_kernel_matrix(D, tvec, avec, normal, sigma)
-        LambdaI = l * sparse.eye(D.shape[1], format='csr')
+
+        LambdaI = l*sparse.eye(D.shape[1], format='csc')
+        
+        Ks = sparse.csc_matrix(Ks)  # If Ks isn't already CSC
+        
         A = LambdaI - Ks
+        
         Kmat = splinalg.inv(A)
+        
         return cast(sparse.spmatrix, Kmat)
     @staticmethod
-    def eval():
-        raise SyntaxError("Method not implemented!")
+    def eval(D,F,l):
+        """Evaluate the operator S_B (λ I - K^*)^{-1} on given boundary with function values F and setting λ = l
+
+        Parameters
+        -----------
+        D: C2Bound 
+            Boundary object
+        F: ndarray 
+            Function values on boundary
+        l: complex128
+            Lambda value to initialize the operator
+        Returns
+        -----------
+        r: ndarray
+            Result of applying (λ I - K^*)^{-1}
+        """
+        temp_op = LmKstarinv(l,D,'P0',1)
+        return temp_op.Kmat @ F 
 
 class dSLdn(Operator):
     def __init__(self, D1, type1, step1, D2, type2=None, step2=None):
