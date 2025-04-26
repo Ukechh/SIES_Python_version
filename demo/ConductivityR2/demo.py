@@ -4,7 +4,8 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 import numpy as np
-from figure.Geom_figures import Ellipse
+import matplotlib.pyplot as plt
+from figure.Geom_figures import Ellipse, Banana
 from figure.C2Boundary.C2Boundary import C2Bound
 from cfg import mconfig
 from Operators.Operators import SingleLayer, LmKstarinv
@@ -13,11 +14,15 @@ from FundamentalSols.green import Green2D_Dn, Green2D
 from asymp.CGPT_methods import make_system_matrix_fast, make_block_matrix, lbda
 
 #Make an inclusion
-B = Ellipse(1, 1/2, phi= 0, NbPts=2**10)
+#B = Ellipse(1, 1/2, phi= 0, NbPts=2**10)
+B = Banana(np.zeros(2), 1, 1/10, np.array([1/2,1/2]).reshape(2,), 2**10)
 #Plot the inclusion
-D = [(B<np.pi /3)]
+D = [(B<np.pi /2)]
 
-#B.plot()
+fig, ax = plt.subplots(figsize=(6,6))  # size in inches
+
+B.plot(ax=ax)
+plt.show()
 
 #npts = B.get_nbpts()
 #print(npts)
@@ -42,7 +47,7 @@ P = Conductivity.Conductivity(D, cnd, pmtt, cfg)
 
 P2 = Conductivity.Conductivity(D, cnd, pmtt, cfg2)
 
-freq = np.linspace(0,100*np.pi, 5)
+freq = np.linspace(0,100*np.pi, 20)
 #print(freq)
 #print(R[0][:,].shape)
 data, f = P.data_simulation(freq)
@@ -74,3 +79,5 @@ Vx, Vy, Sx, Sy, mask = P.calculate_FFv(np.array([0.5]), z0, width, N)
 
 P.plot_far_field(Vx, Vy, Sx, Sy, mask, 0.5)
 #P2.plot_far_field(Vx, Vy, Sx, Sy, mask, 0.01)
+
+P.plot_far_field_streamlines(Vx, Vy, Sx, Sy, mask)

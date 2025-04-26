@@ -6,6 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '/../../
 #We consider the points array as d x n matrix where d is the dimension and n is the number of points
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import warnings
 import math
 import copy
@@ -295,7 +296,7 @@ class Conductivity(SmallInclusion):
         axs[0, 1].plot(src[0], src[1], 'gx', *args, **kwargs)
         for i in range(self._nbIncl):
             self._D[i].plot(ax=axs[0, 1], *args, **kwargs)
-        axs[0, 1].set_title("Potential field u (or u-U), imaginary part")
+        axs[0, 1].set_title("Potential field u, imaginary part")
         axs[0, 1].axis('image')
         fig.colorbar(cs2, ax=axs[0, 1])
 
@@ -309,13 +310,13 @@ class Conductivity(SmallInclusion):
         axs[1, 0].axis('image')
         fig.colorbar(cs3, ax=axs[1, 0])
 
-        # Subplot 4: Background potential (real part)
-        cs4 = axs[1, 1].contourf(Sx, Sy, F_bg.real, nbLine)
+        # Subplot 4: Imaginary part of perturbed field
+        cs4 = axs[1, 1].contourf(Sx, Sy, (F-F_bg).imag, nbLine)
         axs[1, 1].contour(Sx, Sy, F.real, nbLine, colors='k', linewidths=0.5)
         axs[1, 1].plot(src[0], src[1], 'gx', *args, **kwargs)
         for i in range(self._nbIncl):
             self._D[i].plot(ax=axs[1, 1], *args, **kwargs)
-        axs[1, 1].set_title("Background potential field U, real part")
+        axs[1, 1].set_title("Perturbed field u-U, imaginary part")
         axs[1, 1].axis('image')
         fig.colorbar(cs4, ax=axs[1, 1])
 
@@ -405,7 +406,86 @@ class Conductivity(SmallInclusion):
 
         plt.tight_layout()
         plt.show()
-                
+    
+    def plot_far_field_streamlines(self, Vx, Vy, Sx, Sy, mask, title_prefix='Far Field'):
+        """
+        Plot deformed grid and streamlines separately for real and imaginary parts of v(xi).
+        
+        Parameters:
+        -----------
+        Vx, Vy : ndarray of shape (N, N)
+            x- and y-components of far-field map (complex).
+        Sx, Sy : ndarray of shape (N, N)
+            Grid points in xi-space.
+        mask : ndarray of shape (N, N)
+            Boolean mask for valid points.
+        title_prefix : str
+            Title prefix for plots.
+        """
+        mask = mask.astype(bool)
+        # Compute displacements
+        U_real = np.real(Vx) - Sx
+        V_real = np.real(Vy) - Sy
+
+        U_imag = np.imag(Vx)
+        V_imag = np.imag(Vy)
+
+        # Mask invalid points
+        U_real = np.ma.masked_where(~mask, U_real)
+        V_real = np.ma.masked_where(~mask, V_real)
+        U_imag = np.ma.masked_where(~mask, U_imag)
+        V_imag = np.ma.masked_where(~mask, V_imag)
+
+        Vx_real = np.ma.masked_where(~mask, np.real(Vx))
+        Vy_real = np.ma.masked_where(~mask, np.real(Vy))
+
+        Vx_imag = np.ma.masked_where(~mask, np.imag(Vx))
+        Vy_imag = np.ma.masked_where(~mask, np.imag(Vy))
+
+        fig, axs = plt.subplots(1, 2, figsize=(18, 7))
+
+        # === Real part ===
+        ax = axs[0]
+        for i in range(Sx.shape[0]):
+            ax.plot(Vx_real[i, :], Vy_real[i, :], color='lightgray', lw=1)
+        for j in range(Sy.shape[1]):
+            ax.plot(Vx_real[:, j], Vy_real[:, j], color='lightgray', lw=1)
+
+        strm = ax.streamplot(
+            Sx, Sy, U_real, V_real,
+            color=np.hypot(U_real, V_real),
+            cmap='viridis', linewidth=1.2, density=1.5
+        )
+
+        ax.contour(Sx, Sy, mask, levels=[0.5], colors='k', linewidths=1.2)
+        ax.set_title(f'{title_prefix} (Real Part)')
+        ax.set_xlabel(r'$\xi_1$')
+        ax.set_ylabel(r'$\xi_2$')
+        ax.axis('equal')
+        plt.colorbar(strm.lines, ax=ax, label='Displacement Magnitude')
+
+        # === Imaginary part ===
+        ax = axs[1]
+        for i in range(Sx.shape[0]):
+            ax.plot(Vx_imag[i, :], Vy_imag[i, :], color='lightgray', lw=1)
+        for j in range(Sy.shape[1]):
+            ax.plot(Vx_imag[:, j], Vy_imag[:, j], color='lightgray', lw=1)
+
+        strm = ax.streamplot(
+            Sx, Sy, U_imag, V_imag,
+            color=np.hypot(U_imag, V_imag),
+            cmap='plasma', linewidth=1.2, density=1.5
+        )
+
+        ax.contour(Sx, Sy, mask, levels=[0.5], colors='k', linewidths=1.2)
+        ax.set_title(f'{title_prefix} (Imaginary Part)')
+        ax.set_xlabel(r'$\xi_1$')
+        ax.set_ylabel(r'$\xi_2$')
+        ax.axis('equal')
+        plt.colorbar(strm.lines, ax=ax, label='Displacement Magnitude')
+
+        plt.tight_layout()
+        plt.show()
 
 
 

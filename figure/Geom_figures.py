@@ -44,12 +44,61 @@ class Ellipse(C2Bound):
         return self._avec
 
 
-class Banana:
-    nature = 'figure';
-    def __init__(self,center,a, b, curvature):
+class Banana(C2Bound):
+
+    def __init__(self,center,a, b, curvature, nbPoints):
         if a < b:
             raise ValueError('Value error: semi-major axis must be longer than the semi minor one.');
+        x0 , y0 = center[0], center[1]
+        xc, yc = curvature[0], curvature[1]
+        R = np.linalg.norm(center-curvature)
+
+        theta0 = np.arctan2(y0-yc, x0-xc)
+    
+        alpha = a / R
+        theta = np.linspace(0,2*np.pi, nbPoints, endpoint=False)
+        
+        t = theta0+alpha * np.cos(theta)
+        
+        points = np.array([xc + (R+ b * np.sin(theta))*np.cos(t), yc + (R + b * np.sin(theta))*np.sin(t) ])
+
+        tvec = np.array([b*np.cos(theta)*np.cos(t) + alpha * np.sin(theta)* (R+b*np.sin(theta)) * np.sin(t), 
+                         b*np.cos(theta)*np.sin(t) - alpha* np.sin(theta) * (R+b*np.sin(theta)) * np.cos(t)])
+        
+        rotation = Ellipse.R
+        normvec = rotation @ tvec
+        normal = normvec / np.linalg.norm(normvec, axis=0)
+        
+        avec = np.array( [-b*np.sin(theta) * np.cos(t) + alpha* b * np.cos(theta)* np.sin(t) + alpha*np.cos(theta)* (R+b*np.sin(theta))*np.sin(t) +
+                          alpha*b*((np.cos(theta))**2) * np.sin(t) - (alpha*np.sin(theta))**2 * (R+b * np.sin(theta))* np.cos(t)
+                         , -b*np.sin(theta) * np.cos(t) - alpha* b * np.sin(theta)* np.cos(t) - alpha*np.cos(theta)* (R+b*np.sin(theta))*np.cos(t) - 
+                         alpha*b*((np.cos(theta))**2) * np.cos(t) - (alpha*np.sin(theta))**2 * (R+b * np.sin(theta))* np.sin(t)])
+        super().__init__(points, tvec, avec, normal, None, 'Banana', nbPoints)
+        
         self.axis_a = a
         self.axis_b = b
         self.center = center
-        self.curvature = curvature
+        self.curvature = curvature #The curvature means the center of the curvature of the ellipse
+    ##Overloading of operators
+
+    def __add__(self, z0):
+        r = super().__add__(z0)
+        r.center = z0 + self.center
+        r.curvature = z0 + self.curvature
+        return r   
+    def __mul__(self, m):
+        r = super().__mul__(m)
+        r.curvature = m * self.curvature
+        r.center = m * self.center
+        r.axis_a = m * self.axis_a
+        r.axis_b = m * self.axis_b
+        return r
+    def __lt__(self, phi):
+        r = super().__lt__(phi)
+        rot = np.array([
+            [np.cos(phi), -np.sin(phi)],
+            [np.sin(phi),  np.cos(phi)]
+        ])
+        r.center = rot @ self.center
+        r.curvature = rot @ self.curvature
+        return r
