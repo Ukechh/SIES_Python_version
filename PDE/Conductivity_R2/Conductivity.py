@@ -366,7 +366,7 @@ class Conductivity(SmallInclusion):
 
         fig, axes = plt.subplots(2, 2, figsize=(14, 12))
 
-        # Plot Real part of the Far-field (v₁) vs. ξ₁
+        # Plot Real part of the Far-field
         axes[0, 0].contour(Sx, Sy, Sx, colors='lightgray', linewidths=0.5)  # Original vertical lines
         axes[0, 0].contour(Sx, Sy, Sy, colors='lightgray', linewidths=0.5)  # Original horizontal lines
         axes[0, 0].contour(Vx_real, Vy_real, Sx, colors='blue')            # Mapped vertical lines
@@ -379,8 +379,13 @@ class Conductivity(SmallInclusion):
         # Plot Imaginary part of the Far-field (v₁) vs. ξ₁
         axes[0, 1].contour(Sx, Sy, Sx, colors='lightgray', linewidths=0.5)  # Original vertical lines
         axes[0, 1].contour(Sx, Sy, Sy, colors='lightgray', linewidths=0.5)  # Original horizontal lines
-        axes[0, 1].contour(Vx_imag, Vy_imag, Sx, colors='blue')           # Mapped vertical lines
-        axes[0, 1].contour(Vx_imag, Vy_imag, Sy, colors='red')            # Mapped horizontal lines
+        axes[0, 1].contour(Vx_imag, Vy_imag, Sx, colors='blue')             # Mapped vertical lines
+        axes[0, 1].contour(Vx_imag, Vy_imag, Sy, colors='red')              # Mapped horizontal lines
+
+        # Zoom in
+        axes[0, 1].set_xlim(np.min(Vx_imag) - np.max(Vx_imag), np.max(Vx_imag)*2)
+        axes[0, 1].set_ylim(np.min(Vy_imag) - np.max(Vx_imag), np.max(Vy_imag) + np.max(Vx_imag))
+
         axes[0, 1].set_title(f'Imaginary part: Deformation of Grid via v(ξ) (f = {freq})')
         axes[0, 1].set_aspect('equal')
         axes[0, 1].set_xlabel('Im(v₁(ξ))')
@@ -419,8 +424,6 @@ class Conductivity(SmallInclusion):
             Grid points in xi-space.
         mask : ndarray of shape (N, N)
             Boolean mask for valid points.
-        title_prefix : str
-            Title prefix for plots.
         """
         mask = mask.astype(bool)
         # Compute displacements
@@ -467,9 +470,9 @@ class Conductivity(SmallInclusion):
         # === Imaginary part ===
         ax = axs[1]
         for i in range(Sx.shape[0]):
-            ax.plot(Vx_imag[i, :], Vy_imag[i, :], color='lightgray', lw=1)
+            ax.plot(Vx_real[i, :], Vy_real[i, :], color='lightgray', lw=1)
         for j in range(Sy.shape[1]):
-            ax.plot(Vx_imag[:, j], Vy_imag[:, j], color='lightgray', lw=1)
+            ax.plot(Vx_real[:, j], Vy_real[:, j], color='lightgray', lw=1)
 
         strm = ax.streamplot(
             Sx, Sy, U_imag, V_imag,

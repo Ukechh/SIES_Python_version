@@ -5,7 +5,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 
 import numpy as np
 import matplotlib.pyplot as plt
-from figure.Geom_figures import Ellipse, Banana
+from figure.Geom_figures import Ellipse, Banana, Triangle, Rectangle
 from figure.C2Boundary.C2Boundary import C2Bound
 from cfg import mconfig
 from Operators.Operators import SingleLayer, LmKstarinv
@@ -15,9 +15,14 @@ from asymp.CGPT_methods import make_system_matrix_fast, make_block_matrix, lbda
 
 #Make an inclusion
 #B = Ellipse(1, 1/2, phi= 0, NbPts=2**10)
-B = Banana(np.zeros(2), 1, 1/10, np.array([1/2,1/2]).reshape(2,), 2**10)
+B = Rectangle(1,1/2, 2**10)
+#B = Triangle(1, np.pi/3, npts= 2**10)
+#B = Banana(np.zeros(2), 1, 1/10, np.array([1/2,1/2]).reshape(2,), 2**10)
 #Plot the inclusion
-D = [(B<np.pi /2)]
+
+#D = [B*1.5]
+#D = [(B < np.pi / 3)]
+D = [B]
 
 fig, ax = plt.subplots(figsize=(6,6))  # size in inches
 
@@ -33,19 +38,17 @@ cnd = 10*np.array([1])
 pmtt = 1*np.array([1])
 
 #Configuration of sources on a circle
-cfg = mconfig.Coincided(np.zeros((2,1)), 10, 50, np.array([1.0, 2*np.pi, 2*np.pi]), 0)
+#cfg = mconfig.Coincided(np.zeros((2,1)), 10, 50, np.array([1.0, 2*np.pi, np.pi]), 0)
 
 #Single Dirac point source
-cfg2 = mconfig.Coincided(np.zeros((2,1)), 1, 1)
-#cfg.plot()
+cfg = mconfig.Coincided( np.array([-1,1]), 1, 2, np.array([1.0, np.pi, 2*np.pi]))
+
+
+cfg.plot()
 #cfg2.plot()
 #Gn = Green2D_Dn(cfg2.neutSrc(0), B.points, B.normal)
 
-#P = Conductivity.Conductivity([B], cnd, pmtt, cfg)
-
 P = Conductivity.Conductivity(D, cnd, pmtt, cfg)
-
-P2 = Conductivity.Conductivity(D, cnd, pmtt, cfg2)
 
 freq = np.linspace(0,100*np.pi, 20)
 #print(freq)
@@ -72,12 +75,14 @@ F, F_bg, SX, SY, mask = P.calculate_field(np.array([0.5]), sidx, z0, width, N)
 P.plot_field(sidx, F, F_bg, SX, SY, 100)
 #P2.plot_field(sidx, F, F_bg, SX, SY, 100)
 
-M = LmKstarinv.make_kernel_matrix(1, B._points, B._tvec, B._avec, B._normal, B.sigma)
-
-Vx, Vy, Sx, Sy, mask = P.calculate_FFv(np.array([0.5]), z0, width, N)
+freq = np.linspace(1,100*np.pi, endpoint=False, num= 1)
 #Vx, Vy, Sx, Sy, mask = P2.calculate_FFv(np.array([0.01]), z0, width, N)
 
-P.plot_far_field(Vx, Vy, Sx, Sy, mask, 0.5)
+for f in freq:
+    Vx, Vy, Sx, Sy, mask = P.calculate_FFv(np.array([f]), z0, width, N)
+    P.plot_far_field(Vx, Vy, Sx, Sy, mask, f)
+    P.plot_far_field_streamlines(Vx, Vy, Sx, Sy, mask)
+
 #P2.plot_far_field(Vx, Vy, Sx, Sy, mask, 0.01)
 
-P.plot_far_field_streamlines(Vx, Vy, Sx, Sy, mask)
+

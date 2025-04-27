@@ -11,6 +11,7 @@ import math
 import copy
 from figure.C2Boundary import Boundary_methods as bm
 from Tools_fct import convfix
+from scipy.interpolate import CubicSpline
 
 class C2Bound:
     def __init__(self, points, tvec, avec, normal,  com= None, nstr= None, npts=1):
@@ -104,8 +105,6 @@ class C2Bound:
 
     def __mul__(self,m):
         #Scalng the boundary by a scalar m
-        if not np.issubdtype(m, np.floating) or max(m.shape) != 1 or m <=0 :
-            raise TypeError("Type error: only positive floats can be used for scaling")
         new_boundary = copy.deepcopy(self)
         new_boundary._points = new_boundary._points * m;
         new_boundary._center_of_mass = new_boundary._center_of_mass*m;
@@ -333,7 +332,7 @@ class C2Bound:
                 toto = 0.0
             else:
                 toto = np.dot(z - x, x - y) / denom
-                
+
             if toto <= 0:
                 val = 0;
         return val
@@ -346,7 +345,80 @@ class C2Bound:
         Cx = np.sum(0.5 * (points[0, :] ** 2) * normal[0, :] * sigma);
         Cy = np.sum(0.5 * (points[1, :] ** 2) * normal[1, :] * sigma);
         return np.array([Cx, Cy]) / mass
+    @staticmethod
+    def rescale(D0, theta0, nbPoints, nsize=None, dspl=1):
+        """
+        Parameters:
+        -------------
+            D0: array of shape (2, N) — original boundary points
+            theta0: array of shape (N,) — original parameterization angles
+            nbPoints: int — number of points after reparametrization
+            nsize: tuple or list (width, height), optional — resize box
+            dspl: int — down-sampling factor (>=1)
+
+        Returns:
+        --------------
+            D, tvec, avec, normal — resampled boundary, tangent, acceleration, normal vectors
+        """
+        dspl = int(np.ceil(dspl))
+        if dspl < 1:
+            raise ValueError('Down-sampling factor must be positive!')
+
+        D0 = D0.copy()  # work on a copy
+
+        # Resize the boundary to fit in box of size nsize
+        if nsize is not None:
+            minx, maxx = D0[0, :].min(), D0[0, :].max()
+            miny, maxy = D0[1, :].min(), D0[1, :].max()
+
+            z0 = np.array([(minx + maxx) / 2, (miny + maxy) / 2])
+            D0[0, :] = (D0[0, :] - z0[0]) * (nsize[0] / (maxx - minx))
+            D0[1, :] = (D0[1, :] - z0[1]) * (nsize[1] / (maxy - miny))
+
+        # Down-sampling
+        nbPoints0 = theta0.size
+        idx = np.concatenate([np.arange(0, nbPoints0-1, dspl), [nbPoints0-1]])
+        theta0_dspl = theta0[idx]
+        D0_dspl = D0[:, idx]
+
+        # Target theta grid
+        theta = np.linspace(theta0[0], theta0[-1], nbPoints)
+
+        # Spline interpolation
+        D, tvec, avec, normal = C2Bound.boundary_vec_interpl(D0_dspl, theta0_dspl, theta)
+
+        return D, tvec, avec, normal
     
+    @staticmethod
+    def boundary_vec_interpl(points0, theta0,theta=None):
+        """
+        Given a curve and its parameterization, compute:
+        - tangent (first derivative),
+        - normal (rotated tangent),
+        - acceleration (second derivative).
+        """
+        if theta is None:
+            theta = theta0
+        cs_x = CubicSpline(theta0, points0[0, :])
+        cs_y = CubicSpline(theta0, points0[1, :])
+
+        px = cs_x(theta)
+        py = cs_y(theta)
+        points = np.vstack((px, py))
+
+        tx = cs_x(theta, 1)
+        ty = cs_y(theta, 1)
+        tvec = np.vstack((tx, ty))
+
+        rotation = np.array([[0, 1], [-1, 0]])
+        normal = rotation @ tvec
+        normal = normal / np.linalg.norm(normal, axis=0, keepdims=True)
+
+        ax = cs_x(theta, 2)
+        ay = cs_y(theta, 2)
+        avec = np.vstack((ax, ay))
+
+        return points, tvec, avec, normal
     @staticmethod
     def smooth_out_singularity(points, com, hw, box=None):
         npts = points.shape[1]
