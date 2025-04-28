@@ -80,7 +80,7 @@ def rescale(D0, theta0, npts, nsize=[], dspl=None):
     idx = np.concatenate([np.arange(0, nbPoints - 1, dspl), [nbPoints - 1]])
     theta = np.linspace(theta0[0], theta0[-1], npts)
 
-    D, tvec, avec, normal = boundary_vec_interpl(D0[:,idx], theta0[idx], theta)
+    D, tvec, avec, normal = boundary_vec_interpl( D0[:,idx], theta0[idx], theta)
 
     return D, tvec, avec, normal
 
