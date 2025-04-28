@@ -29,6 +29,15 @@ def P1_derivative(M,m,L):
         du[i,:] = np.roll(du[i-1,:], shift=m)
 
     du = M / (L*m) * du.T
-    return du   
+    return du  
+
+def interpolation(Psi, Y, idx=None):
+    if idx is None:
+        idx = []
+    V = Psi @ Y.reshape(Psi.shape[1], -1)
+    if len(idx) != 0:
+        return V[idx,:]
+    else:
+        return V
 
 

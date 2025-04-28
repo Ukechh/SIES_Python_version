@@ -61,6 +61,7 @@ class Operator(ABC):
         return math.floor(self.D1.get_nbpts() / self.stepBEM1)
     def get_nbBEM2(self):
         return math.floor(self.D2.get_nbpts() / self.stepBEM2)
+    
     def get_stiffmat(self):
         return self.stiffmat
     def fwd(self, f):
@@ -81,12 +82,10 @@ class Operator(ABC):
         if self.typeBEM1 == 'P0' and self.typeBEM2 == 'P0':
             return self.Kmat
         elif self.typeBEM1 == 'P0' and self.typeBEM2 != 'P0':
-            # Matrix multiplication with sparse matrices
             return self.Phi_t @ (sigma2 @ self.Kmat)
         elif self.typeBEM1 != 'P0' and self.typeBEM2 == 'P0':
             return self.Kmat @ self.Psi
         elif self.typeBEM1 != 'P0' and self.typeBEM2 != 'P0':
-            # Chain of sparse matrix multiplications
             return self.Phi_t @ (sigma2 @ (self.Kmat @ self.Psi))
         else:
             raise ValueError('Not implemented')
@@ -587,7 +586,7 @@ class dSLdn(Operator):
 class dDLdn(Operator):    
     hypersing: int = 0  # Hypersingular case flag
     
-    def __init__(self, D1, type1, step1, D2, type2, step2):
+    def __init__(self, D1, type1, step1, D2=None, type2=None, step2=None):
         """
         Parameters:
         -----------
@@ -604,6 +603,12 @@ class dDLdn(Operator):
         step2 : Optional[int]
             Discretization step for D2 (defaults to step1)
         """
+        if D2 is None:
+            D2 = D1
+        if step2 is None:
+            step2 = step1
+        if type2 is None:
+            type2 = type1
         super().__init__(D1, type1, step1, D2, type2, step2)
         
         if self.D1 != self.D2:
@@ -657,7 +662,8 @@ class dDLdn(Operator):
         K = self.get_stiffmat()
         return K @ f
     
-    def get_stiffmat(self) -> sparse.spmatrix:
+    @property
+    def stiffmat(self) -> sparse.spmatrix:
         """Compute stiffness matrix.
         
         Returns:
@@ -670,6 +676,7 @@ class dDLdn(Operator):
         
         sigma_diag = sparse.diags(self.D1.sigma, format='csr')
         Smat = SingleLayer.make_kernel_matrix(self.D1.points, self.D1.sigma)
+
         return self.Phi_t @ sigma_diag @ (Smat @ self.Psi)
     
     @staticmethod

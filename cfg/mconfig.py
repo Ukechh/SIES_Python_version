@@ -1,7 +1,14 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+
 import numpy as np
 import math
 import matplotlib.pyplot as plt
 from typing import Optional
+from figure.C2Boundary.C2Boundary import C2Bound
+from figure.Geom_figures import Banana
 
 class mconfig:
     _src : list[np.ndarray]
@@ -232,8 +239,117 @@ class Planewave(mconfig):
         plt.axis('equal')
         plt.show()
 
-#TO DO: Interior ROI, Interior rcv, Fish circle mconfig classes,
+#TO DO: Interior ROI, Interior rcv, mconfig classes,
 #Need to define wavelet classes in order to properly build these...
+class Fish_circle(mconfig):
+
+    dipole_prv : list # directions of dipole source, list of 2D vectors
+
+    Omega0 : C2Bound
+
+
+    def __init__(self, Omega, idxRcv, Z, Rs, Ns, aov, eorgan0=None, dipole0=None, d0 = np.zeros(2), impd = None):
+        """
+			Omega: body of the fish, a C2boundary object
+			idxRcv: index of active receivers. If idxRcv is empty, then all boundary points will be receivers.
+			Z: center of the measurement circle
+			Rs: radius of the measurement circle
+			Ns: number of sources
+			aov: angle of view covered by all sources
+			eorgan0: position of reference of the electric organ (optional)
+			dipole0: direction of reference of the dipole source (optional)
+			d0: offset of the dipole source wrt the center of mass (optional)
+	        impd: impedance of the skin (optional)
+        """
+        if not isinstance(Omega, C2Bound):
+            raise ValueError("Type Error, the domain must be a C2Boundary")
+        
+        self.Omega0 = Omega
+        if impd is None:
+            self.impd = 0.0
+        else:
+            self.impd = impd
+        
+        if dipole0 is None:
+            self.dipole0 = Omega.get_pdirection()
+        else:
+            self.dipole0 = dipole0 / np.linalg.norm(dipole0)
+        
+        if eorgan0 is None:
+            self.eorgan0 = Omega._center_of_mass + np.diag(d0) @ self.dipole0 * Omega.get_diam() / 2
+        else:
+            self.eorgan0 = eorgan0
+        
+        if isinstance(Omega, Banana):
+            R = np.linalg.norm(Omega.center-Omega.curvature)
+            alpha = 2*d0[0]*np.arctan(max(Omega.axis_a, Omega.axis_b) / R)
+            self.dipole0 = np.array([-np.sin(alpha), np.cos(alpha)])
+            self.eorgan0 = np.array([np.cos(alpha), np.sin(alpha)])*R
+        
+        self.aov = aov
+        self._center = Z
+
+        if isinstance(Omega, Banana):
+            self.radius = 0
+        else:
+            self.radius = Rs
+
+        self.fpos , self.angl, _ = mconfig.src_rcv_circle(1, Ns, self.radius, Z, aov, 2*np.pi)
+        
+        if idxRcv == np.empty([]):
+            self.idxRcv = np.arange(Omega.nb_points)
+        else:
+            self.idxRcv = idxRcv
+
+        self._Ng = Ns
+        self.dipole_prv = []
+        for i in range(Ns):
+            theta = self.angl[i]
+            Body = (self.Omega0<theta) + self.fpos[:,i]
+            self._rcv[i] = Body._points[:, self.idxRcv]
+            rot = np.array([[np.cos(theta) , - np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+            Ob = self.fpos[:,i] + rot @self.eorgan0
+            self.dipole_prv.append(Ob)
+
+    def all_dipole(self):
+        r = np.array([])
+        for g in range(self._Ng):
+            r = np.hstack((r, self.dipole_prv[g]))
+        return r
+    
+    def dipole(self, n): #Watch out as some of the parent class attributes are not initialized...
+        if n > self._Ns_total-1 or n < 0:
+            raise ValueError('Source index out of range')
+        return self.dipole_prv[n]
+    def Bodies(self, n):
+        if n > self._Ns_total-1 or n < 0:
+            raise ValueError('Source index out of range')
+        return (self.Omega0 < self.angl[n] + self.fpos[:,n]) 
+    
+    def plot(self,ax = None, idx = None, *args, **kwargs):
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        if idx is None:
+            idx = range(self._Ns_total)
+
+        for s in idx:
+            rcv = self.rcv(s)  # (2, N) array
+            ax.plot(rcv[0, :], rcv[1, :], '.', **kwargs)
+
+            Omega = self.Bodies(s)
+            Omega.plot(ax)  # IMPORTANT: Omega needs an ax passed
+
+            src = self.src(s)  # (2,) vector
+            dp = self.dipole(s) * Omega.diameter * 0.25
+
+            ax.plot(src[0], src[1], 'go', **kwargs)
+            ax.quiver(src[0], src[1], dp[0], dp[1], angles='xy', scale_units='xy', scale=1, width=0.003, **kwargs)
+
+        # Plot the overall center
+        ax.plot(self._center[0], self._center[1], 'r*', **kwargs)
+
+        ax.set_aspect('equal')
 
 class Coincided(Concentric):
     def __init__(self, Z, Rs, Ns, viewmode=np.array([1, 2 * np.pi, 2 * np.pi]), grouped=0, neutCoeff=None, neutRad=0.01):

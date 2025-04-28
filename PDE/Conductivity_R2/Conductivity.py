@@ -6,7 +6,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '/../../
 #We consider the points array as d x n matrix where d is the dimension and n is the number of points
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import warnings
 import math
 import copy
@@ -216,7 +215,6 @@ class Conductivity(SmallInclusion):
 
         return F, F_bg, Sx, Sy, mask
     
-
     def calculate_FFv(self, f, z0, width, N, delta=1):
         """
         Compute the far-field expansion v(ξ) = ξ + S_B (λ I - K^*)^{-1} [v](ξ)
@@ -275,7 +273,7 @@ class Conductivity(SmallInclusion):
 
     def plot_field(self, s, F, F_bg, Sx, Sy, nbLine, *args, **kwargs):
         
-        src = self._cfg._src[s]
+        src = self._cfg.src(s)
 
         fig, axs = plt.subplots(2, 2, figsize=(12, 10))
 

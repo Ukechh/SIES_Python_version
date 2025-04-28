@@ -38,10 +38,10 @@ cnd = 10*np.array([1])
 pmtt = 1*np.array([1])
 
 #Configuration of sources on a circle
-#cfg = mconfig.Coincided(np.zeros((2,1)), 10, 50, np.array([1.0, 2*np.pi, np.pi]), 0)
+cfg = mconfig.Coincided(np.zeros((2,1)), 2, 50, np.array([1.0, 2*np.pi, np.pi]), 0)
 
 #Single Dirac point source
-cfg = mconfig.Coincided( np.array([-1,1]), 1, 2, np.array([1.0, np.pi, 2*np.pi]))
+#cfg = mconfig.Coincided( np.array([-1,1]), 1, 1, np.array([1.0, np.pi, 2*np.pi]))
 
 
 cfg.plot()
@@ -56,7 +56,7 @@ freq = np.linspace(0,100*np.pi, 20)
 data, f = P.data_simulation(freq)
 
 #Calculate and plot field
-sidx = 0
+sidx = 20
 z0 = np.zeros((2,1))
 N = 100
 width=6

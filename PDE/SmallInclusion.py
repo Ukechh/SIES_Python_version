@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Any
 from figure.C2Boundary.C2Boundary import C2Bound
 from cfg.mconfig import mconfig
 from abc import ABC, abstractmethod
@@ -56,6 +57,7 @@ class SmallInclusion(ABC):
             self._D[n].plot(*args,**kwargs)
         # PLot the acquisition system
         self._cfg.plot(*args, **kwargs)
+    
     @abstractmethod
-    def data_simulation(self, *args, **kwargs) -> tuple[list, np.ndarray]:
+    def data_simulation(self, *args, **kwargs) -> Any:
         pass
