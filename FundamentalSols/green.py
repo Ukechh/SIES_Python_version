@@ -44,8 +44,8 @@ def Green2D_Dn(x,y, normal):
 
 def Green2D_Hessian(X,Y):
     n = X.shape[1]
-    m = X.shape[1]
-    H = np.zeros(2*n,2*m)
+    m = Y.shape[1]
+    H = np.zeros((2*n,2*m))
 
     XY1 = General_tools.tensorplus(X[0,:],-Y[0,:])
     XY2 = General_tools.tensorplus(X[1,:],-Y[1,:])
@@ -62,4 +62,4 @@ def Green2D_Hessian(X,Y):
 
     H1 = np.block([[M1, M2],
                [M2, M3]])
-    return H, H1
+    return H, H1 #Shape of both returns is (2n, 2m)

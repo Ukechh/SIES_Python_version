@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import warnings
 import math
 import copy
+import numbers
 from figure.C2Boundary import Boundary_methods as bm
 from Tools_fct import convfix
 from scipy.interpolate import CubicSpline
@@ -23,10 +24,12 @@ class C2Bound:
         
         flag = self.check_sampling(points)
         if not flag:
-            warnings.warn("Curve may contain singluarities", RuntimeWarning);
-        self._center_of_mass = com if com is not None else  self.get_com(points, tvec, normal);
-        self._name_str = nstr if nstr is not None else '';
-        self._tvec_norm = np.linalg.norm(self._tvec, axis = 0);
+            warnings.warn("Curve may contain singluarities", RuntimeWarning)
+        self._center_of_mass = com if com is not None else  self.get_com(points, tvec, normal)
+        self._center_of_mass = self._center_of_mass.reshape((2,1))
+        self._name_str = nstr if nstr is not None else ''
+        self._tvec_norm = np.linalg.norm(self._tvec, axis = 0)
+        
 
 
     #Usual methods:
@@ -51,12 +54,6 @@ class C2Bound:
         #This method returns the number of points in the boundary
         return self._points.shape[1]
 
-    def get_diam(self):
-        #This method gives the diameter of the smallest ball with center COM and containing the boundary
-        D = self._points - self._center_of_mass.reshape(-1, 1)
-        N = np.linalg.norm(D, axis=0);
-        return 2*max(N)
-
     def get_theta(self):
         #This method gives a non-tied off parametrization between [0,2pi) of the boundary with the number of points
         return 2 * np.pi * np.arange(self.nb_points) / self.nb_points
@@ -79,6 +76,12 @@ class C2Bound:
     def normal(self):
         return self._normal
 
+    @property
+    def diameter(self):
+        D = self._points - self._center_of_mass.reshape(-1, 1)
+        N = np.linalg.norm(D, axis=0);
+        return 2*max(N)
+
     def tvec_norm(self):
         return self._tvec_norm
 
@@ -90,7 +93,7 @@ class C2Bound:
             raise TypeError("Type error: only a numpy array of floats can be used for translation.")
 
         # Check shape (2, 1) or (2,)
-        if z0.shape not in [(2,), (2, 1)]:
+        if z0.shape not in [(2, 1), (2,)]:
             raise ValueError("Size error: translation vector must have shape (2,) or (2,1)")
 
         z0 = z0.reshape(2, 1)  # Ensure it's column-shaped
@@ -112,9 +115,10 @@ class C2Bound:
         new_boundary._avec = new_boundary._avec*m;
         return new_boundary
     def __lt__(self, phi):
-        if not isinstance(phi, (int, float)):
-            raise TypeError("Type error: only a scalar float or int can be used for rotation.")
+        if not isinstance(phi, (int, float, np.number)):
+            raise TypeError("Type error: only a scalar float or int can be used for rotation. Got type {}".format(type(phi)))
         #Rotation matrix
+        phi = float(phi)
         rot = np.array([
             [np.cos(phi), -np.sin(phi)],
             [np.sin(phi),  np.cos(phi)]
@@ -146,7 +150,7 @@ class C2Bound:
         if x.shape not in [(2,), (2, 1)]:
             raise ValueError("Size error: x must have shape (2,) or (2,1)")
         flag = 1;
-        if np.linalg.norm(x-self._center_of_mass) >= self.get_diam() / 2:
+        if np.linalg.norm(x-self._center_of_mass) >= self.diameter / 2:
             flag = 0;
         return flag
 
@@ -154,8 +158,8 @@ class C2Bound:
         if not isinstance(B, C2Bound):
             raise TypeError("The argument must be an instance of C2Boundary.")
         flag = 1;
-        d = np.linalg.norm(self._center_of_mass-B.get_center_of_mass);
-        if d <= (self.get_diam()+ B.get_diam()) / 2 :
+        d = np.linalg.norm(self._center_of_mass-B._center_of_mass);
+        if d <= (self.diameter + B.diameter) / 2 :
             flag = 0;
         return flag
     

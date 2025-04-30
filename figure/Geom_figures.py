@@ -115,7 +115,6 @@ class Triangle(C2Bound):
         t3 = t1
         n1, n2 = math.floor(t1*npts), math.floor(t2*npts)
         n3 = npts - (n1+n2)
-        print(f'n1: {n1} n2:{n2}, n3:{n3}')
         A = np.array([0, 2/3 * h])
         B = np.array([-b, -h/3])
         C = np.array([b, -h/3])
@@ -154,7 +153,7 @@ class Triangle(C2Bound):
             points = np.roll(points0, shift=t0, axis=1)
             tvec = np.roll(tvec, shift=t0, axis=1)
             normal = np.roll(normal, shift=t0, axis=1)
-        super().__init__(points, tvec, avec, normal, np.zeros(2), 'Triangle', npts)
+        super().__init__(points, tvec, avec, normal, com=np.zeros(2), nstr='Triangle', npts=npts)
         self.lside = a
         self.angle = angle
     

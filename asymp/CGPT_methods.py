@@ -72,7 +72,7 @@ def make_block_matrix(D, V=None):
         KsdS[n][n] = -csr_matrix(DiagMat).toarray()
         for m in range(nbIncl):
             if m != n:
-                KsdS[m][n] = - (Operators.dSLdn.make_kernel_matrix(D[n].points, D[n].sigma, D[m].points, (D[m].normal)*V[m] )).toarray() # shape (npts,npts)
+                KsdS[m][n] = -Operators.dSLdn.make_kernel_matrix(D[n].points, D[n].sigma, D[m].points, (D[m].normal)*V[m] ) # shape (npts,npts)
     return KsdS #Block matrix of shape (NbIncl, NbIncl) where every block is of shape (npts,npts)
 
 def make_system_matrix(D, l):

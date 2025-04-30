@@ -24,8 +24,8 @@ class Operator(ABC):
         self.typeBEM1 = type1
         self.D2 = D2 if D2 else D1
         self.typeBEM2 = type2 if type2 else type1
-        npts1 = self.D1.get_nbpts()
-        npts2 = self.D2.get_nbpts()
+        npts1 = self.D1.nb_points
+        npts2 = self.D2.nb_points
         #1st Boundary case distinction
         if self.typeBEM1 == 'P0':
         # If P0 basis then the dimension of the approximation space equals to the number of boundary points
@@ -56,17 +56,17 @@ class Operator(ABC):
         self.Phi_t = self.Phi.transpose()
 
     #Utility methods
-
-    def get_nbBEM1(self):
+    @property
+    def nbBEM1(self):
         return math.floor(self.D1.get_nbpts() / self.stepBEM1)
-    def get_nbBEM2(self):
+    @property
+    def nbBEM2(self):
         return math.floor(self.D2.get_nbpts() / self.stepBEM2)
     
     def get_stiffmat(self):
         return self.stiffmat
     def fwd(self, f):
         return self.Kmat @ (self.Psi @ f)
-    
     
     @staticmethod
     def green(X,Y):
@@ -406,7 +406,7 @@ class Kstar(Operator):
             Step size for P1 basis on image boundary
         """
         super().__init__(D1, type1, step1, D2, type2, step2)
-        self.Kmat = self.make_kernel_matrix(D1.points, D1.tvec, D1.avec, D1.normal, D1.sigma)
+        self.Kmat = self.make_kernel_matrix(D1.points, D1._tvec, D1._avec, D1._normal, D1.sigma)
     
     @staticmethod
     def make_kernel_matrix(D, tvec, avec, normal, sigma):
@@ -478,7 +478,7 @@ class Ident(Operator):
      
     def __init__(self,D,type1,step1,type2=None,step2=None):
         super().__init__(D, type1, step1, type2=type2, step2=step2)
-        self.Kmat = cast(sparse.spmatrix, sparse.eye(D._nb_points, format='csr'))
+        self.Kmat = cast(sparse.spmatrix, sparse.eye(D.nb_points, format='csr'))
     
     @staticmethod
     def make_kernel_matrix(m):
@@ -555,13 +555,13 @@ class dSLdn(Operator):
         Parameters:
         -----------
         D : ndarray
-            Source boundary points (2 x npts array)
+            Source boundary points (2 x npts)
         sigma_D : ndarray
-            Weights/density values on source boundary (npts array)
+            Weights/density values on source boundary (npts)
         E : ndarray
-            Target boundary points (2 x N array)
+            Target boundary points (2 x N)
         normal_E : ndarray
-            Normal vectors on target boundary (2 x N array) 
+            Normal vectors on target boundary (2 x N) 
         Returns:
         --------
         Kmat: spmatrix
@@ -571,14 +571,14 @@ class dSLdn(Operator):
         Gx, Gy = green.Green2D_grad(E, D)  # Shapes (N x npts)
         
         # Normal dot product with gradient
-        Kx = normal_E[0,:] @ Gx  # (N,) @ (N x npts) -> (npts,)
-        Ky = normal_E[1,:] @ Gy 
+        Kx = sparse.diags(normal_E[0,:]) @ Gx  # (N,N) @ (N, npts) -> (N,npts)
+        Ky = sparse.diags(normal_E[1,:]) @ Gy 
         
         # Diagonal matrices
-        K_diag = sparse.diags(Kx + Ky, format='csr')  # (npts x npts)
+        K_diag = Kx + Ky  # (N, npts)
         sigma_diag = sparse.diags(sigma_D, format='csr')  # (npts x npts)
         
-        return K_diag @ sigma_diag #Shape (npts,npts)
+        return K_diag @ sigma_diag #Shape (N,npts)
     @staticmethod
     def eval():
         raise SyntaxError("Method not implemented because of the jump!")
@@ -672,7 +672,7 @@ class dDLdn(Operator):
             Stiffness matrix in CSR format
         """
         if not self.hypersing:
-            return super().get_stiffmat()
+            return super().stiffmat
         
         sigma_diag = sparse.diags(self.D1.sigma, format='csr')
         Smat = SingleLayer.make_kernel_matrix(self.D1.points, self.D1.sigma)
@@ -700,15 +700,15 @@ class dDLdn(Operator):
         spmatrix
             Sparse kernel matrix (N x M) in CSR format
         """
-        _, H = green.Green2D_Hessian(E, D)
+        _, H = green.Green2D_Hessian(E, D) #Shape of H is (2N, 2M)
         
         # Create block diagonal normal matrices
-        normal_E_block = sparse.block_diag([sparse.diags(normal_E[0, :]), sparse.diags(normal_E[1, :])], format='csr')
-        normal_D_block = sparse.block_diag([sparse.diags(normal_D[0, :]), sparse.diags(normal_D[1, :])], format='csr')
+        normal_E_block = sparse.hstack([sparse.diags(normal_E[0, :]), sparse.diags(normal_E[1, :])], format='csr') #Shape is (N,2N)
+        normal_D_block = sparse.vstack([sparse.diags(normal_D[0, :]), sparse.diags(normal_D[1, :])], format='csr') #Shape is (2M,M)
         
-        Hn = -normal_E_block @ H @ normal_D_block
-        sigma_diag = sparse.diags(sigma_D, format='csr')
-        return Hn @ sigma_diag
+        Hn = -normal_E_block @ H @ normal_D_block #Shape is (N,M)
+        sigma_diag = sparse.diags(sigma_D, format='csr') #Shape is (M,M)
+        return Hn @ sigma_diag #Shape is (N,M)
     
     @staticmethod
     def eval() -> None:

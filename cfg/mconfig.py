@@ -103,13 +103,13 @@ class mconfig:
         Returns:
         -------------
         Xs: the positions of sources/receivers, dimension 2 X (N0*Na)
-        Thetas: angle of each source/receiver
+        Thetas: angle of each source/receiver, dimension (N0*Na)
         Xslist: Xs in list. Xslist[n] is the coordinates Xs of the n+1-th arc
         """
         Na = int(Naa)
         N0 = int(N00)
         Xs = np.zeros((2,N0*Na))
-        Thetas = np.zeros((1, N0*Na))
+        Thetas = np.zeros((N0*Na))
         Xslist = [np.empty((0,0)) for _ in range(Na)]
 
         for n in range(Na):
@@ -120,7 +120,7 @@ class mconfig:
 
             Xs[:,n*N0:(n+1)*N0] = rr
 
-            Thetas[0,n*N0:(n+1)*N0] = tt
+            Thetas[n*N0:(n+1)*N0] = tt
 
             v = rr + Z 
             
@@ -169,8 +169,9 @@ class Concentric(mconfig):
             self.equispaced = 1
     
     def plot(self, *args, **kwargs):
-        super().plot(*args, **kwargs)
         plt.plot(self._center[0], self._center[1], 'r*')
+        super().plot(*args, **kwargs)
+        
     @property
     def nbDirac(self):
         return self.neutCoeff.shape[0]
@@ -274,9 +275,8 @@ class Fish_circle(mconfig):
             self.dipole0 = Omega.get_pdirection()
         else:
             self.dipole0 = dipole0 / np.linalg.norm(dipole0)
-        
         if eorgan0 is None:
-            self.eorgan0 = Omega._center_of_mass + np.diag(d0) @ self.dipole0 * Omega.get_diam() / 2
+            self.eorgan0 = Omega._center_of_mass + ((np.diag(d0) @ self.dipole0) * Omega.diameter / 2).reshape(-1,1)
         else:
             self.eorgan0 = eorgan0
         
@@ -287,29 +287,35 @@ class Fish_circle(mconfig):
             self.eorgan0 = np.array([np.cos(alpha), np.sin(alpha)])*R
         
         self.aov = aov
-        self._center = Z
+        self._center = Z.reshape(2,1)
 
         if isinstance(Omega, Banana):
             self.radius = 0
         else:
             self.radius = Rs
 
-        self.fpos , self.angl, _ = mconfig.src_rcv_circle(1, Ns, self.radius, Z, aov, 2*np.pi)
+        self.fpos , self.angl, _ = mconfig.src_rcv_circle(1, Ns, self.radius, Z.reshape(2,1), aov, 2*np.pi)
         
-        if idxRcv == np.empty([]):
+        if idxRcv.shape[0] == 0:
             self.idxRcv = np.arange(Omega.nb_points)
         else:
             self.idxRcv = idxRcv
 
         self._Ng = Ns
         self.dipole_prv = []
+        self._rcv = []
+        self._src = []
         for i in range(Ns):
             theta = self.angl[i]
-            Body = (self.Omega0<theta) + self.fpos[:,i]
-            self._rcv[i] = Body._points[:, self.idxRcv]
+            Body = (self.Omega0 < theta)
+            Body = Body + self.fpos[:,i]
+            self._rcv.append(Body._points[:, self.idxRcv])
+            
             rot = np.array([[np.cos(theta) , - np.sin(theta)], [np.sin(theta), np.cos(theta)]])
-            Ob = self.fpos[:,i] + rot @self.eorgan0
-            self.dipole_prv.append(Ob)
+            Ob = rot @ self.dipole0
+            Sr = self.fpos[:,i].reshape(-1,1) + rot @self.eorgan0
+            self.dipole_prv.append(Ob) #Direction of the s-th dipole
+            self._src.append(Sr) # Position of the s-th electric organ         
 
     def all_dipole(self):
         r = np.array([])
@@ -324,21 +330,21 @@ class Fish_circle(mconfig):
     def Bodies(self, n):
         if n > self._Ns_total-1 or n < 0:
             raise ValueError('Source index out of range')
-        return (self.Omega0 < self.angl[n] + self.fpos[:,n]) 
+        return ((self.Omega0 < self.angl[n]) + self.fpos[:,n]) 
     
     def plot(self,ax = None, idx = None, *args, **kwargs):
         if ax is None:
             fig, ax = plt.subplots()
 
         if idx is None:
-            idx = range(self._Ns_total)
+            idx = np.arange(self._Ns_total)
 
         for s in idx:
             rcv = self.rcv(s)  # (2, N) array
             ax.plot(rcv[0, :], rcv[1, :], '.', **kwargs)
 
             Omega = self.Bodies(s)
-            Omega.plot(ax)  # IMPORTANT: Omega needs an ax passed
+            Omega.plot(ax=ax)  # IMPORTANT: Omega needs an ax passed
 
             src = self.src(s)  # (2,) vector
             dp = self.dipole(s) * Omega.diameter * 0.25

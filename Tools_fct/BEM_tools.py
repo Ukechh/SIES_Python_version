@@ -4,21 +4,21 @@ import numpy as np
 def P1_basis(M,m):
     if M % m:
         raise ValueError("The number of boundary points must be a multiplier of the step length.")
-    N= M/m
-    u = np.zeros(N,M)
+    N= int(M/m)
+    u = np.zeros((N,M))
     #Hat function centered at the first boundary point, which is periodic
-    hat = np.zeros(1,M)
-    hat[0:2*m+1] = np.concatenate([np.arange(m,dtype=float) / m, [1], np.arange(m-1,-1,-1,dtype=float) / m])
-    u[0,:] = np.roll(hat, shift=-m, axis = 1)
+    hat = np.zeros(M)
+    hat[:2*m+1] = np.concatenate([np.arange(m,dtype=float) / m, [1], np.arange(m-1,-1,-1,dtype=float) / m])
+    u[0,:] = np.roll(hat, shift=-m)
     for i in range(1, N):
-        u[i,:] = np.roll(u[i-1,:], shift = m, axis= 1)
+        u[i,:] = np.roll(u[i-1,:], shift = m)
     u = u.T
-    return u
+    return u #u is of shape (M,N)
 
 def P1_derivative(M,m,L):
     if M % m != 0:
         raise ValueError("The number of boundary points must be a multiplier of the step length")
-    N = M /m
+    N = int(M /m)
     du = np.zeros((N,M))
     
     dhat = np.zeros(M)
