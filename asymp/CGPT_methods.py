@@ -37,7 +37,7 @@ def lbda(cnd, pmtt = np.array([]), freq=np.array([])):
         raise ValueError('Invalid value of conductivity')
     
     toto = cnd + 1j * pmtt * freq
-    return (toto + 1) / (2*(toto - 1))
+    return ((toto + 1) / (2*(toto - 1))).ravel()
 
 def make_block_matrix(D, V=None):
     """

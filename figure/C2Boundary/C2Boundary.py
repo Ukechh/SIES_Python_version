@@ -16,11 +16,12 @@ from scipy.interpolate import CubicSpline
 
 class C2Bound:
     def __init__(self, points, tvec, avec, normal,  com= None, nstr= None, npts=1):
-        self._points = points;
-        self._tvec = tvec;
-        self._avec = avec;
-        self._normal = normal;
-        self.nb_points = npts;
+        self._points = points
+        self._tvec = tvec
+        self._avec = avec
+        self._normal = normal
+        self.nb_points = npts
+        self.delta = 1
         
         flag = self.check_sampling(points)
         if not flag:
@@ -113,7 +114,9 @@ class C2Bound:
         new_boundary._center_of_mass = new_boundary._center_of_mass*m;
         new_boundary._tvec = new_boundary._tvec*m;
         new_boundary._avec = new_boundary._avec*m;
+        new_boundary.delta = new_boundary.delta * m;
         return new_boundary
+    
     def __lt__(self, phi):
         if not isinstance(phi, (int, float, np.number)):
             raise TypeError("Type error: only a scalar float or int can be used for rotation. Got type {}".format(type(phi)))

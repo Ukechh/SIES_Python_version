@@ -513,7 +513,7 @@ class LmKstarinv(Operator):
             raise ValueError("The operator is not defined for this value of lambda!")
         Ks = Kstar.make_kernel_matrix(D, tvec, avec, normal, sigma)
 
-        LambdaI = l*sparse.eye(D.shape[1], format='csc')
+        LambdaI = l * sparse.eye(D.shape[1], format='csc')
         
         Ks = sparse.csc_matrix(Ks)  # If Ks isn't already CSC
         

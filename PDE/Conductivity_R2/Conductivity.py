@@ -248,28 +248,52 @@ class Conductivity(SmallInclusion):
         epsilon = width / ((N - 1) * 5)
 
         Sx, Sy, mask = self._D[0].boundary_off_mask(z0, width, N, epsilon)
+
         Z = np.vstack((Sx.ravel(), Sy.ravel()))  # shape (2, N**2)
 
         for i in range(1, self._nbIncl):
             _, _, toto = self._D[i].boundary_off_mask(z0, width, N, epsilon)
             mask *= toto
 
-        
-        lam = lbda(cnd=self._cnd, pmtt=self._pmtt, freq=f)
-        #print(f'lambda shape is {lam.shape}')
         v = Z.copy().astype(np.complex128)
 
         for i in range(self._nbIncl):
-            phi = np.vstack((LmKstarinv.eval(self._D[i], self._D[i]._normal[0,:], lam[i]), LmKstarinv.eval(self._D[i], self._D[i]._normal[1,:], lam[i])))  # shape (2, NbPts)
-            #print(f'The shape of phi is:{phi.shape}')
-            Sphi = np.vstack((SingleLayer.eval(self._D[i], phi[0,:], Z), SingleLayer.eval(self._D[i], phi[1,:], Z)))  # shape (2, N**2)
-            #print(f'The shape of Sphi is:{Sphi.shape}')
+            Sphi = self.far_field(v, f, i)
             v += Sphi  # shape (2, N**2)
 
         Vx = v[0, :].reshape((N, N))
         Vy = v[1, :].reshape((N, N))
+        sSx = (Sx-z0[0]) / delta
+        sSy = (Sy- z0[1]) / delta
+        return Vx, Vy, Sx, Sy, mask, sSx, sSy
 
-        return Vx, Vy, Sx, Sy, mask    
+    def far_field(self, x, freq, idx):
+        """
+        Computes the far field function v(ξ) = ξ + S_B (λ I - K^*)^{-1} [v](ξ) at the point ξ = (x-z0) / delta 
+        where z0 is the center of the inclusion of index idx, at frequency freq and for delta the scaling coefficient
+        """
+
+        lam = lbda(cnd=self._cnd, pmtt=self._pmtt, freq=freq)
+        
+        l = lam[idx]
+
+        D = self._D[idx]
+        
+        z0 = D._center_of_mass.reshape((2,1))
+
+        delta = D.delta
+        
+        B = (D + (-z0) ) * (1 / delta)
+
+        phi = np.vstack((LmKstarinv.eval(B, B._normal[0,:], l), LmKstarinv.eval(B, B._normal[1,:], l)), dtype=np.complex128)
+        
+        xi = (x-z0) / delta
+        
+        Sphi = np.vstack((SingleLayer.eval(B, phi[0,:], xi), SingleLayer.eval(B, phi[1,:], xi)), dtype=np.complex128)
+
+        Sphi = xi + Sphi
+
+        return Sphi
 
     def plot_field(self, s, F, F_bg, Sx, Sy, nbLine, *args, **kwargs):
         
@@ -321,7 +345,7 @@ class Conductivity(SmallInclusion):
         plt.tight_layout()
         plt.show()
 
-    def plot_far_field(self, Vx, Vy, Sx, Sy, mask, freq):
+    def plot_far_field(self, Vx, Vy, Sx, Sy, freq):
         """
         Visualizes the real and imaginary parts of the far-field map v(ξ) showing
         how the identity grid is distorted in both parts with normalized displacement vectors.
@@ -331,22 +355,17 @@ class Conductivity(SmallInclusion):
         Vx, Vy : ndarray (N, N)
             Mapped coordinates from the far-field expansion.
         Sx, Sy : ndarray (N, N)
-            Original grid coordinates (ξ-space).
+            Original grid coordinates.
         mask : ndarray (N, N)
             Boolean mask of valid evaluation points (outside boundaries).
         freq : float
             Frequency used for labeling the plots.
         """
 
-        mask = mask.astype(bool)
         
-        # Masking invalid points
-        Vx_masked = np.ma.masked_where(~mask, Vx)
-        Vy_masked = np.ma.masked_where(~mask, Vy)
-
         # Extracting real and imaginary parts for both Vx and Vy
-        Vx_real, Vx_imag = np.real(Vx_masked), np.imag(Vx_masked)
-        Vy_real, Vy_imag = np.real(Vy_masked), np.imag(Vy_masked)
+        Vx_real, Vx_imag = np.real(Vx), np.imag(Vx)
+        Vy_real, Vy_imag = np.real(Vy), np.imag(Vy)
 
         # Normalizing displacement vectors for real and imaginary parts
         def normalize_vectors(vx, vy):
@@ -390,8 +409,8 @@ class Conductivity(SmallInclusion):
         axes[0, 1].set_ylabel('Im(v₂(ξ))')
 
         # Vector field of displacement (Real part) v(ξ) - ξ (Real) - Normalized
-        axes[1, 0].quiver(Sx[::4, ::4], Sy[::4, ::4], 
-                        Vx_real_norm[::4, ::4], Vy_real_norm[::4, ::4],
+        axes[1, 0].quiver(Sx[::10, ::10], Sy[::10, ::10], 
+                        Vx_real_norm[::10, ::10], Vy_real_norm[::10, ::10],
                         scale=1, angles='xy', scale_units='xy', color='green', width=0.003)
         axes[1, 0].set_title(f'Real part of Normalized Displacement Field: v(ξ) - ξ (f = {freq})')
         axes[1, 0].set_aspect('equal')
@@ -407,8 +426,8 @@ class Conductivity(SmallInclusion):
         axes[1, 1].set_xlabel('ξ₁')
         axes[1, 1].set_ylabel('ξ₂')
 
-        plt.tight_layout()
-        plt.show()
+        #plt.tight_layout()
+        #plt.show()
     
     def plot_far_field_streamlines(self, Vx, Vy, Sx, Sy, mask, title_prefix='Far Field'):
         """
@@ -485,8 +504,8 @@ class Conductivity(SmallInclusion):
         ax.axis('equal')
         plt.colorbar(strm.lines, ax=ax, label='Displacement Magnitude')
 
-        plt.tight_layout()
-        plt.show()
+        #plt.tight_layout()
+        #plt.show()
 
 
 
