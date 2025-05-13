@@ -10,18 +10,19 @@ from figure.C2Boundary.C2Boundary import C2Bound
 from cfg import mconfig
 from Operators.Operators import SingleLayer, LmKstarinv
 from PDE.Conductivity_R2 import Conductivity
+from PDE.Conductivity_R2.make_CGPT import make_matrix_A
 from FundamentalSols.green import Green2D_Dn, Green2D
 from asymp.CGPT_methods import make_system_matrix_fast, make_block_matrix, lbda
 from GPT.Expansions import inner_expansion_conductivityR2_0, plot_inner_expansion
 
 #Make an inclusion
-B = Ellipse(1, 1/2, phi= 0, NbPts=2**10)
+B = Ellipse(1, 1/2, phi= 0, NbPts=2**8)
 #B = Rectangle(1,1/2, 200)
 #B = Triangle(1, np.pi/3, npts= 2**10)
 #B = Banana(np.zeros(2), 1, 1/10, np.array([1/2,1/2]).reshape(2,), 2**10)
 #Plot the inclusion
 z = np.array([0.5,0.5]).reshape((2,1))
-B = B + z
+B = (B + z)*0.2
 #D = [B*1.5]
 #D = [(B < np.pi / 3)]
 D = [B]
@@ -31,16 +32,15 @@ D = [B]
 #B.plot(ax=ax)
 #plt.show()
 
-#npts = B.get_nbpts()
-#print(npts)
-
 #Set conductivity and permitivitty
 
-cnd = 1000*np.array([1]) 
-pmtt = 0.5*np.array([1])
+cnd = 10*np.array([1]) 
+pmtt = 5*np.array([1])
 
 #Configuration of sources on a circle
 cfg = mconfig.Coincided(np.zeros((2,1)), 2, 50, np.array([1.0, 2*np.pi, np.pi]), 0)
+Xs = cfg.all_src()
+z = np.zeros((2,1))
 
 #Single Dirac point source
 #cfg = mconfig.Coincided( np.array([-1,1]), 1, 1, np.array([1.0, np.pi, 2*np.pi]))
@@ -59,7 +59,6 @@ data, f = P.data_simulation(freq)
 
 #Calculate and plot field
 sidx = 0
-z0 = np.zeros((2,1))
 N = 100
 width=6
 epsilon = width / ((N-1)*5)
@@ -77,18 +76,14 @@ epsilon = width / ((N-1)*5)
 #P.plot_field(sidx, F, F_bg, SX, SY, 100)
 #P2.plot_field(sidx, F, F_bg, SX, SY, 100)
 
-freq = np.linspace(1,100*np.pi, endpoint=False, num=2)
+#freq = np.linspace(0.1,100*np.pi, endpoint=False, num=2)
 #Vx, Vy, Sx, Sy, mask = P2.calculate_FFv(np.array([0.01]), z0, width, N)
 
-for f in freq:
-    Vx, Vy, Sx, Sy, mask, sSx, sSy = P.calculate_FFv(np.array([f]), z0, width, N)
-    
-    P.plot_far_field(Vx, Vy, sSx, sSy, f)
-    plot_inner_expansion(P, f, 0, 2.5, N)
-    
-    plt.tight_layout()
-    plt.show()
-    #P.plot_far_field_streamlines(Vx, Vy, Sx, Sy, mask)
+#for f in freq:
+    #Vx, Vy, Sx, Sy, _, sSx, sSy = P.calculate_FFv(np.array([f]), width, N)
+    #plot_inner_expansion(P, f, 0, 2.5, N) 
+    #plt.tight_layout()
+    #plt.show()
 
 #print(P.far_field(np.zeros((2,1)), np.pi, 0).shape)
 

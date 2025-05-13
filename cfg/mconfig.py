@@ -109,6 +109,7 @@ class mconfig:
         Na = int(Naa)
         N0 = int(N00)
         Xs = np.zeros((2,N0*Na))
+        Z = Z.reshape((2,1))
         Thetas = np.zeros((N0*Na))
         Xslist = [np.empty((0,0)) for _ in range(Na)]
 

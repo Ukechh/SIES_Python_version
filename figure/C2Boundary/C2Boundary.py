@@ -62,9 +62,10 @@ class C2Bound:
     def get_center_of_mass(self):
         return self._center_of_mass
 
+    @property
     def cpoints(self):
         #This method returns the points as a complex numbers with x- axis being the real part and y-axis being the imaginary part
-        return self._points[0,:] + 1j * self._points[1,:];
+        return self._points[0,:] + 1j * self._points[1,:]
     
     @property
     def points(self):

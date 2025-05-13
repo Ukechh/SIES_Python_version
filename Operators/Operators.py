@@ -92,8 +92,7 @@ class Operator(ABC):
     
     @abstractmethod
     def make_kernel_matrix(self, *args, **kwargs)-> sparse.spmatrix:
-        pass
-    
+        pass  
 
 class SingleLayer(Operator):
     """
@@ -509,7 +508,7 @@ class LmKstarinv(Operator):
         -----------
         Kmat: spmatrix of shape (npts,npts)
         """
-        if np.linalg.norm(l).any() < 1/2:
+        if abs(l).any() < 1/2:
             raise ValueError("The operator is not defined for this value of lambda!")
         Ks = Kstar.make_kernel_matrix(D, tvec, avec, normal, sigma)
 

@@ -4,6 +4,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '/../../')))
 
 #We consider the points array as d x n matrix where d is the dimension and n is the number of points
+from scipy.sparse.linalg import lsqr, LinearOperator
 import numpy as np
 import matplotlib.pyplot as plt
 import warnings
@@ -14,11 +15,14 @@ from cfg import mconfig
 from FundamentalSols import green
 from Operators.Operators import SingleLayer, LmKstarinv
 from asymp.CGPT_methods import lbda, make_system_matrix_fast, make_system_matrix, make_block_matrix
+from PDE.Conductivity_R2.make_CGPT import make_linop_CGPT
+
 
 class Conductivity(SmallInclusion):
     __dGdn : np.ndarray
     _cnd : np.ndarray
     _pmtt : np.ndarray
+    drude : bool
     
     def compute_dGdn(self, sidx = None ):
         """
@@ -69,7 +73,6 @@ class Conductivity(SmallInclusion):
         r = r.reshape(npts*self._nbIncl, len(sidx)) #Returns a size (npts*nbIncl, indices) matrix
         return r
 
-
     def compute_Phi(self, f, s=None):
         """
         Construct the Phi vector for each given frequency and at source s if indicated
@@ -86,7 +89,7 @@ class Conductivity(SmallInclusion):
             List[ndarray]
         """
         npts = self._D[0].nb_points
-        l = lbda(self._cnd, self._pmtt, f)
+        l = lbda(self._cnd, self._pmtt, f, self.drude)
 
         Amat, _ = make_system_matrix_fast(self.__KsdS, l) #Amat is the full system matrix of shape (npts*NbIncl, npts*Nbincl)
         
@@ -104,7 +107,7 @@ class Conductivity(SmallInclusion):
             idx += npts
         return P
 
-    def __init__(self, D, cnd, pmtt, cfg):
+    def __init__(self, D, cnd, pmtt, cfg, drude=True):
         super().__init__(D, cfg)
 
         if len(cnd) < self._nbIncl or len(pmtt) < self._nbIncl:
@@ -116,6 +119,7 @@ class Conductivity(SmallInclusion):
             if pmtt[i] <= 0:
                 raise ValueError("Permittivity constants must be positive!")
         
+        self.drude = drude
         self._cnd = cnd
         self._pmtt = pmtt
         self.__KsdS = make_block_matrix(self._D) #Block matrix (List of list of ndarrays) of shape (nbIncl,nbIncl) where each matrix is of shape (npts,npts)
@@ -140,7 +144,9 @@ class Conductivity(SmallInclusion):
 
         #Set the default value of freq
         if f is None:
-            f = np.zeros(1)
+            f = np.zeros(1) 
+        if not isinstance(f, np.ndarray) :
+            f = np.array([f])
         #Initialize the output and the index
         out_MSR = []
         for freq in f:
@@ -155,7 +161,7 @@ class Conductivity(SmallInclusion):
                     toto[s,:] = (SingleLayer.eval(self._D[i], Phi[i][:,s], rcv)).T #eval outputs a (Nr,1) ndarray so we transpose so we get the eval  
                 MSR += toto
 
-            out_MSR.append(MSR) 
+            out_MSR.append(MSR)
         return out_MSR, f
     
     def calculate_field(self, f, s, z0, width, N):
@@ -215,7 +221,7 @@ class Conductivity(SmallInclusion):
 
         return F, F_bg, Sx, Sy, mask
     
-    def calculate_FFv(self, f, z0, width, N, delta=1):
+    def calculate_FFv(self, f, width, N):
         """
         Compute the far-field expansion v(ξ) = ξ + S_B (λ I - K^*)^{-1} [v](ξ)
         on a grid centered at `z0` in the ξ = (x - z0)/δ coordinate frame.
@@ -247,6 +253,8 @@ class Conductivity(SmallInclusion):
 
         epsilon = width / ((N - 1) * 5)
 
+        z0 = self._D[0]._center_of_mass
+
         Sx, Sy, mask = self._D[0].boundary_off_mask(z0, width, N, epsilon)
 
         Z = np.vstack((Sx.ravel(), Sy.ravel()))  # shape (2, N**2)
@@ -263,8 +271,11 @@ class Conductivity(SmallInclusion):
 
         Vx = v[0, :].reshape((N, N))
         Vy = v[1, :].reshape((N, N))
-        sSx = (Sx-z0[0]) / delta
-        sSy = (Sy- z0[1]) / delta
+
+        delta = self._D[0].delta
+
+        sSx = Sx / delta #We only stretch the grid as it is already centered to z0
+        sSy = Sy / delta
         return Vx, Vy, Sx, Sy, mask, sSx, sSy
 
     def far_field(self, x, freq, idx):
@@ -273,7 +284,7 @@ class Conductivity(SmallInclusion):
         where z0 is the center of the inclusion of index idx, at frequency freq and for delta the scaling coefficient
         """
 
-        lam = lbda(cnd=self._cnd, pmtt=self._pmtt, freq=freq)
+        lam = lbda(cnd=self._cnd, pmtt=self._pmtt, freq=freq, drude=self.drude)
         
         l = lam[idx]
 
@@ -345,170 +356,45 @@ class Conductivity(SmallInclusion):
         plt.tight_layout()
         plt.show()
 
-    def plot_far_field(self, Vx, Vy, Sx, Sy, freq):
-        """
-        Visualizes the real and imaginary parts of the far-field map v(ξ) showing
-        how the identity grid is distorted in both parts with normalized displacement vectors.
+    def reconstruct_CGPT(self, MSR, ord, maxiter=1e6, tol=1e-5, symmode=False, method= 'pinv', L = None):
+        if L is None:
+            L, As, Ar = make_linop_CGPT(self._cfg, ord, symmode)
+        else:
+            _, As, Ar = make_linop_CGPT(self._cfg, ord, symmode)
+        res = []
+        rres= []
+        CGPT = []
+        if method == 'pinv':
+            for t in range(len(MSR)):
+                iArT = np.linalg.pinv(Ar).T
+                iAs = np.linalg.pinv(As)
+                CGPT.append(iAs @ MSR[t] @ iArT)
+                res.append(np.linalg.norm(MSR[t] - Ar @ CGPT[t] @ As.conj().T, 'fro'))
+                rres.append(res[t] / np.linalg.norm(MSR[t], 'fro'))
+        elif method=='lsqr':
+            def mv(x):
+                return L(x,False)
+            def rv(x):
+                return L(x, True)
+            ns, _ = As.shape
+            nr, _ = Ar.shape  # type: ignore
+            L_op = LinearOperator(shape= (nr*ns, 4*ord*ord), dtype=np.complex128, matvec= mv, rmatvec = rv) # type: ignore
+            # Above the form of L_op is (nr*ns, 4*ord**2) because we need to solve the least squares ||SxR-MSR|| for x in (2ord, 2ord)
+            # This needs to be done using the form ||AX-MSR(:)|| because of how the solvers work, thus to translate the operator SXR into AX
+            # We do this form
 
-        Parameters:
-        -----------
-        Vx, Vy : ndarray (N, N)
-            Mapped coordinates from the far-field expansion.
-        Sx, Sy : ndarray (N, N)
-            Original grid coordinates.
-        mask : ndarray (N, N)
-            Boolean mask of valid evaluation points (outside boundaries).
-        freq : float
-            Frequency used for labeling the plots.
-        """
-
-        
-        # Extracting real and imaginary parts for both Vx and Vy
-        Vx_real, Vx_imag = np.real(Vx), np.imag(Vx)
-        Vy_real, Vy_imag = np.real(Vy), np.imag(Vy)
-
-        # Normalizing displacement vectors for real and imaginary parts
-        def normalize_vectors(vx, vy):
-            # Compute magnitude
-            magnitude = np.sqrt(vx**2 + vy**2)
-            # Prevent division by zero by replacing small values with 1e-10
-            magnitude = np.where(magnitude == 0, 1e-10, magnitude)
-            # Normalize vectors
-            return 0.2 * vx / magnitude,0.2* vy / magnitude
-
-        # Normalize displacement vectors (Real part)
-        Vx_real_norm, Vy_real_norm = normalize_vectors(Vx_real - Sx, Vy_real - Sy)
-        # Normalize displacement vectors (Imaginary part)
-        Vx_imag_norm, Vy_imag_norm = normalize_vectors(Vx_imag - Sx, Vy_imag - Sy)
-
-        fig, axes = plt.subplots(2, 2, figsize=(14, 12))
-
-        # Plot Real part of the Far-field
-        axes[0, 0].contour(Sx, Sy, Sx, colors='lightgray', linewidths=0.5)  # Original vertical lines
-        axes[0, 0].contour(Sx, Sy, Sy, colors='lightgray', linewidths=0.5)  # Original horizontal lines
-        axes[0, 0].contour(Vx_real, Vy_real, Sx, colors='blue')            # Mapped vertical lines
-        axes[0, 0].contour(Vx_real, Vy_real, Sy, colors='red')             # Mapped horizontal lines
-        axes[0, 0].set_title(f'Real part: Deformation of Grid via v(ξ) (f = {freq})')
-        axes[0, 0].set_aspect('equal')
-        axes[0, 0].set_xlabel('Re(v₁(ξ))')
-        axes[0, 0].set_ylabel('Re(v₂(ξ))')
-
-        # Plot Imaginary part of the Far-field (v₁) vs. ξ₁
-        axes[0, 1].contour(Sx, Sy, Sx, colors='lightgray', linewidths=0.5)  # Original vertical lines
-        axes[0, 1].contour(Sx, Sy, Sy, colors='lightgray', linewidths=0.5)  # Original horizontal lines
-        axes[0, 1].contour(Vx_imag, Vy_imag, Sx, colors='blue')             # Mapped vertical lines
-        axes[0, 1].contour(Vx_imag, Vy_imag, Sy, colors='red')              # Mapped horizontal lines
-
-        # Zoom in
-        axes[0, 1].set_xlim(np.min(Vx_imag) - np.max(Vx_imag), np.max(Vx_imag)*2)
-        axes[0, 1].set_ylim(np.min(Vy_imag) - np.max(Vx_imag), np.max(Vy_imag) + np.max(Vx_imag))
-
-        axes[0, 1].set_title(f'Imaginary part: Deformation of Grid via v(ξ) (f = {freq})')
-        axes[0, 1].set_aspect('equal')
-        axes[0, 1].set_xlabel('Im(v₁(ξ))')
-        axes[0, 1].set_ylabel('Im(v₂(ξ))')
-
-        # Vector field of displacement (Real part) v(ξ) - ξ (Real) - Normalized
-        axes[1, 0].quiver(Sx[::10, ::10], Sy[::10, ::10], 
-                        Vx_real_norm[::10, ::10], Vy_real_norm[::10, ::10],
-                        scale=1, angles='xy', scale_units='xy', color='green', width=0.003)
-        axes[1, 0].set_title(f'Real part of Normalized Displacement Field: v(ξ) - ξ (f = {freq})')
-        axes[1, 0].set_aspect('equal')
-        axes[1, 0].set_xlabel('ξ₁')
-        axes[1, 0].set_ylabel('ξ₂')
-
-        # Vector field of displacement (Imaginary part) v(ξ) - ξ (Imaginary) - Normalized
-        axes[1, 1].quiver(Sx[::4, ::4], Sy[::4, ::4], 
-                        Vx_imag_norm[::4, ::4], Vy_imag_norm[::4, ::4],
-                        scale=1, angles='xy', scale_units='xy', color='orange', width=0.003)
-        axes[1, 1].set_title(f'Imaginary part of Normalized Displacement Field: v(ξ) - ξ (f = {freq})')
-        axes[1, 1].set_aspect('equal')
-        axes[1, 1].set_xlabel('ξ₁')
-        axes[1, 1].set_ylabel('ξ₂')
-
-        #plt.tight_layout()
-        #plt.show()
+            for t in range(len(MSR)):
+                toto = MSR[t].reshape(-1,1)
+                if toto.shape == (1,1):
+                    toto = toto.reshape(1)
+                X, _, _, r1norm, _, _, _, _, _, _= lsqr(L_op, toto, atol=tol, btol=tol, iter_lim=maxiter)
+                cgpt = X.reshape((2*ord, 2*ord))
+                res.append(r1norm)
+                rres.append(r1norm / np.linalg.norm(MSR[t], 'fro'))
+                if symmode:
+                    cgpt = cgpt + cgpt.T
+                CGPT.append(cgpt)
+        return CGPT, res, rres
     
-    def plot_far_field_streamlines(self, Vx, Vy, Sx, Sy, mask, title_prefix='Far Field'):
-        """
-        Plot deformed grid and streamlines separately for real and imaginary parts of v(xi).
-        
-        Parameters:
-        -----------
-        Vx, Vy : ndarray of shape (N, N)
-            x- and y-components of far-field map (complex).
-        Sx, Sy : ndarray of shape (N, N)
-            Grid points in xi-space.
-        mask : ndarray of shape (N, N)
-            Boolean mask for valid points.
-        """
-        mask = mask.astype(bool)
-        # Compute displacements
-        U_real = np.real(Vx) - Sx
-        V_real = np.real(Vy) - Sy
-
-        U_imag = np.imag(Vx)
-        V_imag = np.imag(Vy)
-
-        # Mask invalid points
-        U_real = np.ma.masked_where(~mask, U_real)
-        V_real = np.ma.masked_where(~mask, V_real)
-        U_imag = np.ma.masked_where(~mask, U_imag)
-        V_imag = np.ma.masked_where(~mask, V_imag)
-
-        Vx_real = np.ma.masked_where(~mask, np.real(Vx))
-        Vy_real = np.ma.masked_where(~mask, np.real(Vy))
-
-        Vx_imag = np.ma.masked_where(~mask, np.imag(Vx))
-        Vy_imag = np.ma.masked_where(~mask, np.imag(Vy))
-
-        fig, axs = plt.subplots(1, 2, figsize=(18, 7))
-
-        # === Real part ===
-        ax = axs[0]
-        for i in range(Sx.shape[0]):
-            ax.plot(Vx_real[i, :], Vy_real[i, :], color='lightgray', lw=1)
-        for j in range(Sy.shape[1]):
-            ax.plot(Vx_real[:, j], Vy_real[:, j], color='lightgray', lw=1)
-
-        strm = ax.streamplot(
-            Sx, Sy, U_real, V_real,
-            color=np.hypot(U_real, V_real),
-            cmap='viridis', linewidth=1.2, density=1.5
-        )
-
-        ax.contour(Sx, Sy, mask, levels=[0.5], colors='k', linewidths=1.2)
-        ax.set_title(f'{title_prefix} (Real Part)')
-        ax.set_xlabel(r'$\xi_1$')
-        ax.set_ylabel(r'$\xi_2$')
-        ax.axis('equal')
-        plt.colorbar(strm.lines, ax=ax, label='Displacement Magnitude')
-
-        # === Imaginary part ===
-        ax = axs[1]
-        for i in range(Sx.shape[0]):
-            ax.plot(Vx_real[i, :], Vy_real[i, :], color='lightgray', lw=1)
-        for j in range(Sy.shape[1]):
-            ax.plot(Vx_real[:, j], Vy_real[:, j], color='lightgray', lw=1)
-
-        strm = ax.streamplot(
-            Sx, Sy, U_imag, V_imag,
-            color=np.hypot(U_imag, V_imag),
-            cmap='plasma', linewidth=1.2, density=1.5
-        )
-
-        ax.contour(Sx, Sy, mask, levels=[0.5], colors='k', linewidths=1.2)
-        ax.set_title(f'{title_prefix} (Imaginary Part)')
-        ax.set_xlabel(r'$\xi_1$')
-        ax.set_ylabel(r'$\xi_2$')
-        ax.axis('equal')
-        plt.colorbar(strm.lines, ax=ax, label='Displacement Magnitude')
-
-        #plt.tight_layout()
-        #plt.show()
-
-
-
-
 
 

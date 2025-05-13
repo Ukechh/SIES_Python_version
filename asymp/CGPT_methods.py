@@ -3,11 +3,12 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 import numpy as np
+import math
 from itertools import combinations
 from Operators import Operators
 from scipy.sparse import csr_matrix
 
-def lbda(cnd, pmtt = np.array([]), freq=np.array([])):
+def lbda(cnd, pmtt = np.array([]), freq=np.array([]), drude= False, tau = 1.0):
     """
     Compute the parameter lambda(λ) used in boundary integral operators,
     based on conductivity, permittivity, and frequency.
@@ -36,8 +37,17 @@ def lbda(cnd, pmtt = np.array([]), freq=np.array([])):
     if np.any((cnd==1) | (cnd< 0)):
         raise ValueError('Invalid value of conductivity')
     
+    if drude:
+        cnd = cnd * (1 / (1 + 1j * freq * tau) )
+    
     toto = cnd + 1j * pmtt * freq
-    return ((toto + 1) / (2*(toto - 1))).ravel()
+    
+    l = ((toto + 1) / (2*(toto - 1))).ravel()
+
+    if abs(l).any() < 1/2:
+        raise Warning('Module of lambda is less than 1/2!')
+    
+    return l
 
 def make_block_matrix(D, V=None):
     """
@@ -114,7 +124,55 @@ def make_system_matrix_fast(KsdS, l):
     Amat = np.block(Acell)
     return Amat, Acell
     
+def theoretical_CGPT(D, lam, ord):
+    KsdS = make_block_matrix(D)
+    M = theoretical_CGPT_fast(D, KsdS, lam, ord)
+    return M
 
+def theoretical_CGPT_fast(D, KsdS, lam, ord): 
+    epsilon = 1e-8
+    npts = D[0].nb_points
+    nbIncl = len(D)
 
-
+    if len(lam) < nbIncl:
+        raise ValueError('Value of lambda must be specified for each inclusion.')
+    
+    Amat0, _  = make_system_matrix_fast(KsdS, lam)
+    if min(abs(lam-1/2)) < epsilon:
+        r = math.floor(Amat0.shape[1] / nbIncl)
+        o = np. ones((1,r))
+        k = np.kron(np.eye(nbIncl), o)
+        Amat = np.vstack((Amat0,  k))
+    else:
+        Amat = Amat0
+    CC = np.zeros((ord, ord), dtype=np.complex128)
+    CS = np.zeros((ord, ord), dtype=np.complex128)
+    SC = np.zeros((ord, ord), dtype=np.complex128)
+    SS = np.zeros((ord, ord), dtype=np.complex128)
+    for m in range(ord):
+        B = np.zeros((npts, nbIncl), dtype=np.complex128)
+        for i in range(nbIncl):
+            dm = m * (D[i].cpoints)**(m-1)
+            toto = D[i].normal[0,:] * dm + D[i].normal[1,:] * dm * 1j;
+            B[:, i] = toto.ravel()
+            
+            if min(abs(lam-1/2)) < epsilon:
+                z = np.zeros((nbIncl,1), dtype=np.complex128)
+                b = np.vstack( (B.ravel(), z))
+            else:
+                b = B.ravel()
+            toto = np.linalg.solve(Amat, b.real)
+            rphi = toto.reshape(npts, nbIncl)
+            
+            toto = np.linalg.solve(Amat, b.imag)
+            iphi = toto.reshape(npts, nbIncl)
+            for n in range(ord):
+                for i in range(nbIncl):
+                    zn = D[i].cpoints ** n * D[i].sigma
+                    CC[m,n] = CC[m,n] + zn.real @ rphi[:,i]
+                    CS[m,n] = CS[m,n] + zn.imag @rphi[:,i]
+                    SC[m,n] = SC[m,n] + zn.real @ iphi[:,i]
+                    SS[m,n] = SS[m,n] + zn.imag @ iphi[:,i]
+    M = np.block([[CC, CS],[SC, SS]])
+    return M
 
