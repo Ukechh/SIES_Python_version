@@ -41,7 +41,6 @@ def Green2D_Dn(x,y, normal):
     Gn = np.diag(normal[0, :]) @ Gx + np.diag(normal[1, :]) @ Gy 
     return Gn.T
 
-
 def Green2D_Hessian(X,Y):
     n = X.shape[1]
     m = Y.shape[1]

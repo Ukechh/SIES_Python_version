@@ -241,8 +241,6 @@ class Planewave(mconfig):
         plt.axis('equal')
         plt.show()
 
-#TO DO: Interior ROI, Interior rcv, mconfig classes,
-#Need to define wavelet classes in order to properly build these...
 class Fish_circle(mconfig):
 
     dipole_prv : list # directions of dipole source, list of 2D vectors

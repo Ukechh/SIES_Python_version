@@ -527,9 +527,9 @@ class LmKstarinv(Operator):
 
         Parameters
         -----------
-        D: C2Bound 
+        D: C2Bound
             Boundary object
-        F: ndarray 
+        F: ndarray
             Function values on boundary
         l: complex128
             Lambda value to initialize the operator

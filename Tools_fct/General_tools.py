@@ -25,3 +25,34 @@ def cart2pol(x):
     r = np.hypot(x[0], x[1])
     theta = np.arctan2(x[1], x[0])
     return r, theta
+
+def add_white_noise_mat(X, nlvl):
+    W = np.random.normal(size=X.shape)
+    m,n = X.shape
+    Y = X + W * nlvl* np.linalg.norm(X,'fro') / np.sqrt(m*n)
+    sigma = np.linalg.norm(X,'fro') * nlvl / np.sqrt(m*n)
+    
+    return Y, sigma
+
+def add_white_noise_mat_complex(X, nlvl):
+    W = np.random.normal(size=X.shape)
+    V = np.random.normal(size=X.shape)
+    
+    epsilon = np.mean(abs(X))*nlvl
+    
+    Y = X + (W + 1j*V) * epsilon
+
+    return Y, epsilon
+
+def add_white_noise_list(data, nlvl):
+    noisy_data = []
+    variance = []
+    for f in range(len(data)):
+        X = data[f]
+        if data[f].dtype() == np.complex128:
+            Y , sigma = add_white_noise_mat_complex(X, nlvl)
+        else:
+            Y, sigma = add_white_noise_mat(X, nlvl)
+        noisy_data.append(Y)
+        variance.append(sigma)
+    return noisy_data, variance

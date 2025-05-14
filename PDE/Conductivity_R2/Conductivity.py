@@ -57,7 +57,7 @@ class Conductivity(SmallInclusion):
             #Loop over each inclusion
             for i in range(self._nbIncl):
                 toto = np.zeros((len(sidx), npts))
-                #Loop over each source index, the 
+                #Loop over each source index 
                 for s in range(len(sidx)):
                     psrc = self._cfg.neutSrc(sidx[s]) #We get the positions of the diracs ( shape (2, nbDirac) )
                     G = green.Green2D_Dn(psrc, self._D[i].points, self._D[i].normal) # Compute de normal derivative between boundary points and dirac points
@@ -79,7 +79,7 @@ class Conductivity(SmallInclusion):
         
         Parameters:
         -------------
-        f:  array of tested frequencies
+        f:  array of tested frequencies for inclusions (Shape must be either (1,) or (NbIncl,)
             ndarray[float]
         s: source index
             int
@@ -98,7 +98,7 @@ class Conductivity(SmallInclusion):
         else:
             dGdn = self.compute_dGdn(s) #ndarray return type of size (npts*nbIncl, 1) as s is a single integer
         
-        phi = np.linalg.solve(Amat, dGdn) #Returns X = (Amat)^-1 dGdn of shape (npts*nbIncl,1)
+        phi = np.linalg.solve(Amat, dGdn) #Returns X = (Amat)^-1 dGdn of shape (npts*nbIncl,1) or shape (npts*nbIncl, Ns_total)
         P = []
         
         idx = 0
@@ -128,12 +128,13 @@ class Conductivity(SmallInclusion):
     #Simulation Methods
     def data_simulation(self, f=None):
         """
-        Simulate the data at the given frequencies
+        Simulate the data of the perturbed field at the given frequencies
         
         Parameters:
         -------------
         f:  array of tested frequencies
-            ndarray[float] 
+            ndarray[float]
+        !!!!!! WARNING: ONLY WORKS FOR ONE INCLUSION OR INCLUSIONS WITH THE SAME WORKING FREQUENCY
         Returns:
         -------------
         out_MSR: list of data matrices, for each frequency
@@ -150,7 +151,7 @@ class Conductivity(SmallInclusion):
         #Initialize the output and the index
         out_MSR = []
         for freq in f:
-            Phi = self.compute_Phi(freq) #List of length NbIncl
+            Phi = self.compute_Phi(freq) #List of length NbIncl containing (npts,1) vectors
             MSR = np.zeros((self._cfg._Ns_total, self._cfg._Nr), dtype=np.complex128) #Shape (Ns_total, Nr)
 
             for i in range(self._nbIncl):
@@ -158,10 +159,12 @@ class Conductivity(SmallInclusion):
                 
                 for s in range(self._cfg._Ns_total):
                     rcv = self._cfg.rcv(s) #Outputs a (2, Nr) ndarray
-                    toto[s,:] = (SingleLayer.eval(self._D[i], Phi[i][:,s], rcv)).T #eval outputs a (Nr,1) ndarray so we transpose so we get the eval  
-                MSR += toto
+                    #Here Phi[i] denotes the values of the phi function on the i-th inclusion's boundary
+                    #Phi[i] [:,s] corresponds to the values of the phi function on the i-th inclusion, the column corresponding to the problem corresponding to the s-th source
+                    toto[s,:] = (SingleLayer.eval(self._D[i], Phi[i][:,s], rcv)).T #eval outputs a (Nr,1) ndarray so we transpose so we get the eval (1,Nr) 
+                MSR += toto #The MSR corresponds to the total perturbation
 
-            out_MSR.append(MSR)
+            out_MSR.append(MSR) #One MSR matrix per working frequency
         return out_MSR, f
     
     def calculate_field(self, f, s, z0, width, N):
@@ -214,7 +217,7 @@ class Conductivity(SmallInclusion):
 
         for i in range(self._nbIncl):
             ev = SingleLayer.eval(self._D[i], Phi[i], Z) #Phi[i] has shape (npts,1), Z has shape (2,N**2) output has shape (N**2,1)
-            V += ev.ravel() 
+            V += ev.ravel()
         
         F = V.reshape((N,N)) #Total field
         F_bg = Hs.reshape((N,N)) #Background field
@@ -294,17 +297,17 @@ class Conductivity(SmallInclusion):
 
         delta = D.delta
         
-        B = (D + (-z0) ) * (1 / delta)
+        B = (D + (-z0) ) * (1 / delta) #Recenter and rescale
 
-        phi = np.vstack((LmKstarinv.eval(B, B._normal[0,:], l), LmKstarinv.eval(B, B._normal[1,:], l)), dtype=np.complex128)
+        ev = np.vstack((LmKstarinv.eval(B, B._normal[0,:], l), LmKstarinv.eval(B, B._normal[1,:], l)), dtype=np.complex128)
         
         xi = (x-z0) / delta
         
-        Sphi = np.vstack((SingleLayer.eval(B, phi[0,:], xi), SingleLayer.eval(B, phi[1,:], xi)), dtype=np.complex128)
+        Sphi = np.vstack((SingleLayer.eval(B, ev[0,:], xi), SingleLayer.eval(B, ev[1,:], xi)), dtype=np.complex128)
 
-        Sphi = xi + Sphi
+        v_hat = xi + Sphi
 
-        return Sphi
+        return v_hat
 
     def plot_field(self, s, F, F_bg, Sx, Sy, nbLine, *args, **kwargs):
         
@@ -357,6 +360,33 @@ class Conductivity(SmallInclusion):
         plt.show()
 
     def reconstruct_CGPT(self, MSR, ord, maxiter=1e6, tol=1e-5, symmode=False, method= 'pinv', L = None):
+        """
+        Reconstruct contracted GPTs from the Multistatic response matrix using either a least squares or a penrose inverse procedure
+        Parameters:
+        -------------------
+        MSR: Multistatic response matrix, one matrix per working frequency
+            list[ndarray]
+        ord: Order of the CGPTs
+            int
+        maxiter: Max # of iterations when using least squares iterative method
+            int
+        tol: Tolerance parameter for least squares
+            float
+        symmmode: Boolean to indicate wether or not the CGPT is computed symmetric
+            Bool
+        method: indicates which methd to use
+            string
+        L: Linear operator of the CGPT, is a handle and computes L(X) = SXR
+
+        Returns:
+        ------------------
+        CGPT: Corresponding CGPT matrix for each working frequency
+            list
+        res: Residual of the approximation using the desired method
+            list
+        rres: Normalized residuals
+            list
+        """
         if L is None:
             L, As, Ar = make_linop_CGPT(self._cfg, ord, symmode)
         else:
@@ -395,6 +425,3 @@ class Conductivity(SmallInclusion):
                     cgpt = cgpt + cgpt.T
                 CGPT.append(cgpt)
         return CGPT, res, rres
-    
-
-

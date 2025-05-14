@@ -18,27 +18,39 @@ from GPT.Expansions import inner_expansion_conductivityR2_0, plot_inner_expansio
 
 
 #Make an inclusion
-B = Ellipse(1, 1/2, phi= np.pi, NbPts=2**8)
-
+B1 = Ellipse(1, 1/2, phi= np.pi, NbPts=2**8)
+B2 = Triangle(1, np.pi/3, npts= 2**8) 
 #Define the center of the inclusion
-z = np.array([0.5,0.5]).reshape((2,1))
+z1 = np.array([0.5,0.5]).reshape((2,1))
+z2 = np.array([-0.8,-0.8]).reshape((2,1))
+
+#Define a figure to plot inclusions
+axe = plt.subplot()
+#Translate and scale inclusions
+B1 = (B1 + z1) * 0.1
+B2 = (B2 + z2) * 0.1
 
 #Add the inclusion to the list of inclusions
-D = [B]
+#D = [B1]
+#Multiple inclusions
+D = [B1, B2]
 
-#Set conductivity and permitivitty
+#Set conductivity and permitivitty (Single inclusion)
 cnd = 10*np.array([1]) 
 pmtt = 5*np.array([1])
+
+#Set conductivity and permitivitty (Multiple inclusions)
+cnd = 10*np.array([1,0.5]) 
+pmtt = 5*np.array([1,0.5])
 
 #Set up a list of working frequencies
 freq = np.linspace(0.01, 150*np.pi, endpoint=False, num=100)
 
 #Single Dirac point source
-cfg = mconfig.Coincided( np.array([-1,1]), 1, 50, np.array([1.0, np.pi, 2*np.pi]))
+cfg = mconfig.Coincided( np.array([-1,1]), 1, 50, np.array([1.0, 2*np.pi, 2*np.pi]))
 
 #Define a COnductivity instance
 P = Conductivity.Conductivity(D, cnd, pmtt, cfg)
-axe = plt.subplot()
 P.plot(ax=axe)
 plt.show()
 #Choose the order
@@ -72,7 +84,6 @@ for i, f in enumerate(freq):
 plt.figure(figsize=(8, 5))
 plt.plot(freq, lsqr_diff, marker='o', linestyle='-', color='crimson', label='Least squares')
 plt.plot(freq, pinv_diff, marker='o', linestyle='--', color='magenta', label='Penrose Inverse')
-plt.yscale('log')
 plt.xlabel('Working frequency')
 plt.ylabel('Frobenius norm')
 plt.title('Difference between theoretical and estimated CGPTs')
