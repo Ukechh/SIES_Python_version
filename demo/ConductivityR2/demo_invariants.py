@@ -26,7 +26,7 @@ cnd = 10*np.array([1])
 pmtt = 5*np.array([1])
 
 #Configuration of sources on a circle
-cfg = mconfig.Coincided(np.zeros((2,1)), 1, 50, np.array([1.0, 2*np.pi, np.pi]), 0)
+cfg = mconfig.Coincided(np.zeros((2,1)), 2, 50, np.array([1.0, 2*np.pi, np.pi]), 0)
 
 freq = np.linspace(0,5*np.pi, 10)
 

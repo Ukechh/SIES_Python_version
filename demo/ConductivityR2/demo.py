@@ -70,10 +70,10 @@ epsilon = width / ((N-1)*5)
 #Phi = P.compute_Phi(0.01, s=sidx)
 #print(Phi[0].shape)
 
-#F, F_bg, SX, SY, mask = P.calculate_field(np.array([0.5]), sidx, z0, width, N)
+F, F_bg, SX, SY, mask = P.calculate_field(np.array([0.5]), sidx, z, width, N)
 #F, F_bg, SX, SY, mask = P2.calculate_field(np.array([0.01]), sidx, z0, width, N)
 
-#P.plot_field(sidx, F, F_bg, SX, SY, 100)
+P.plot_field(sidx, F, F_bg, SX, SY, 100)
 #P2.plot_field(sidx, F, F_bg, SX, SY, 100)
 
 #freq = np.linspace(0.1,100*np.pi, endpoint=False, num=2)
