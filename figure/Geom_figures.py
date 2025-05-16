@@ -224,3 +224,201 @@ class Rectangle(C2Bound):
         r.width = self.width*m
         r.height = self.height*m
         return r
+
+class Flower(C2Bound):
+    def __init__(self, a, b, npts, npetals=5, epsilon=0.3, tau=0.0):
+        com = np.zeros((2, 1))
+        pert = 1
+        phi = 0
+        if tau == 0:
+            _, points, tvec, _, normal, avec, Sigma, Ksymm = Flower.make_flower(com, npetals, pert, a, b, phi, epsilon, npts)
+        elif tau > 0 and tau < 1:
+            _, points, tvec, _, normal, avec, Sigma = Flower.make_damaged_flower(com, npetals, a, b, phi, epsilon, npts, tau)
+            com = self.get_com(points, tvec, normal)
+        else:
+            raise ValueError('Value error: the percentage of damage must be between 0 and 1.')
+        super().__init__(points, tvec, avec, normal, com, 'Flower', npts)
+        self.axis_a = a
+        self.axis_b = b
+        self.npetals = npetals
+        self.epsilon = epsilon
+        self.tau = tau
+        self.phi = phi
+    @staticmethod
+    def make_flower(center, npetals, pertb, a, b, phi, epsilon, npts):
+        theta = 2 * (np.pi / npts) * np.arange(npts)
+        rotation = np.array([[np.cos(phi), -np.sin(phi)], [np.sin(phi), np.cos(phi)]])
+        D = np.zeros((2, npts))
+        D[0,:] = np.cos(theta)*( np.ones((npts,)) + epsilon*(np.cos(npetals*theta)**pertb))
+        D[1,:] = np.sin(theta)*(np.ones((npts,)) + epsilon*(np.cos(npetals*theta)**pertb))
+
+        D = rotation @ np.array([[a, 0], [0, b]]) @ D + center
+
+        tvec = np.zeros((2, npts))
+        tvec[0,:] = -np.sin(theta)* (np.ones(npts) + epsilon*(np.cos(npetals*theta)**pertb)) - pertb*epsilon*npetals*np.sin(npetals*theta)*np.cos(theta)*(np.cos(npetals*theta)**(pertb-1))
+        tvec[1,:] = np.cos(theta)* (np.ones(npts) + epsilon*(np.cos(npetals*theta)**pertb)) - pertb*epsilon*npetals*np.sin(npetals*theta)*np.sin(theta)*(np.cos(npetals*theta)**(pertb-1))
+        
+        tvec = rotation @ np.array([[a, 0], [0, b]]) @ tvec
+        
+
+        norm_tvec = np.linalg.norm(tvec, axis=0)
+        norm_tvec_sq = norm_tvec**2
+
+        R = np.array([[0, 1], [-1, 0]])
+        normal = R @ tvec
+        normal = normal / norm_tvec
+
+        avec = np.zeros((2, npts))
+        if pertb == 1:
+            avec[0, :] = (
+                -np.cos(theta) * (np.ones(npts) + epsilon * np.cos(npetals * theta))
+                + 2 * epsilon * npetals * np.sin(theta) * np.sin(npetals * theta)
+                - epsilon * npetals**2 * np.cos(npetals * theta) * np.cos(theta)
+            )
+            avec[1, :] = (
+                -np.sin(theta) * (np.ones(npts) + epsilon * np.cos(npetals * theta))
+                - 2 * epsilon * npetals * np.cos(theta) * np.sin(npetals * theta)
+                - epsilon * npetals**2 * np.cos(npetals * theta) * np.sin(theta)
+            )
+        else:
+            avec[0, :] = (
+                -np.cos(theta) * (np.ones(npts) + epsilon * np.cos(npetals * theta) ** pertb)
+                + 2 * pertb * epsilon * npetals * np.sin(theta) * np.sin(npetals * theta) * np.cos(npetals * theta) ** (pertb - 1)
+                - pertb * epsilon * npetals**2 * (
+                    np.cos(npetals * theta) ** pertb
+                    + (pertb - 1) * npetals * np.sin(npetals * theta) ** 2 * np.cos(npetals * theta) ** (pertb - 2)
+                ) * np.cos(theta)
+            )
+            avec[1, :] = (
+                -np.sin(theta) * (np.ones(npts) + epsilon * np.cos(npetals * theta) ** pertb)
+                - 2 * pertb * epsilon * npetals * np.cos(theta) * np.sin(npetals * theta) * np.cos(npetals * theta) ** (pertb - 1)
+                - pertb * epsilon * npetals**2 * (
+                    np.cos(npetals * theta) ** pertb
+                    + (pertb - 1) * npetals * np.sin(npetals * theta) ** 2 * np.cos(npetals * theta) ** (pertb - 2)
+                ) * np.sin(theta)
+            )
+        
+        avec = rotation @ np.array([[a, 0], [0, b]]) @ avec
+        
+        #Small length element (for integration)
+        Sigma = 2 * (np.pi / npts) * norm_tvec
+
+        # Symmetry of the flower
+        if a == b:
+            Ksymm = (((pertb + 1) % 2) + 1) * npetals
+        else:
+            Ksymm = ((pertb + 1) % 2) + 1
+        
+        return theta, D, tvec, norm_tvec_sq, normal, avec, Sigma, Ksymm
+    
+    @staticmethod
+    def make_damaged_flower(center, npetals, a, b, phi, epsilon, npts, tau):
+        
+        theta = 2 * (np.pi / npts) * np.arange(npts)
+        D= np.zeros((2, npts))
+        N0 = math.ceil(npts / npetals)
+        theta0 = theta[0:N0]
+        theta1 = theta[N0:]
+        _, f, df, ddf = Flower.poly_petal_inter(epsilon, npetals, 1-tau, theta0)
+
+        D[0, :N0] = np.cos(theta0) * f
+        D[1, :N0] = np.sin(theta0) * f
+        D[0, N0:] = np.cos(theta1) * (np.ones(npts - N0) - epsilon * np.cos(npetals * theta1))
+        D[1, N0:] = np.sin(theta1) * (np.ones(npts - N0) - epsilon * np.cos(npetals * theta1))
+
+        rot = np.array([[np.cos(phi), -np.sin(phi)], [np.sin(phi), np.cos(phi)]])
+        D = rot @ np.array([[a, 0], [0, b]]) @ D + center
+
+        tvec = np.zeros((2, npts))
+        # Velocity vector (tangent)
+        tvec[:, :N0] = np.vstack([
+            -np.sin(theta0) * f + np.cos(theta0) * df,
+            np.cos(theta0) * f + np.sin(theta0) * df
+        ])
+        tvec[:, N0:] = np.vstack([
+            -np.sin(theta1) * (np.ones(npts - N0) - epsilon * np.cos(npetals * theta1)) + epsilon * npetals * np.sin(npetals * theta1) * np.cos(theta1),
+            np.cos(theta1) * (np.ones(npts - N0) - epsilon * np.cos(npetals * theta1)) + epsilon * npetals * np.sin(npetals * theta1) * np.sin(theta1)
+        ])
+
+        tvec = rot @ np.array([[a, 0], [0, b]]) @ tvec
+        norm_tvec = np.linalg.norm(tvec, axis=0)
+        norm_tvec_square = norm_tvec**2
+
+        R = np.array([[0, 1], [-1, 0]])
+        normal = R @ tvec
+        normal = normal / np.linalg.norm(normal, axis=0)
+
+        avec = np.zeros((2, npts))
+        avec[:, :N0] = np.vstack([
+            -np.cos(theta0) * f - 2 * np.sin(theta0) * df + np.cos(theta0) * ddf,
+            -np.sin(theta0) * f + 2 * np.cos(theta0) * df + np.sin(theta0) * ddf
+        ])
+
+        avec[:, N0:] = np.vstack([
+            -np.cos(theta1) * (np.ones(npts-N0) - epsilon * np.cos(npetals * theta1)) 
+            - 2 * epsilon * npetals * np.sin(theta1) * np.sin(npetals * theta1) 
+            + epsilon * npetals**2 * np.cos(npetals * theta1) * np.cos(theta1),
+            
+            -np.sin(theta1) * (np.ones(npts-N0) - epsilon * np.cos(npetals * theta1))
+            + 2 * epsilon * npetals * np.cos(theta1) * np.sin(npetals * theta1) 
+            + epsilon * npetals**2 * np.cos(npetals * theta1) * np.sin(theta1)
+        ])
+
+        avec = rot @ np.array([[a, 0], [0, b]]) @ avec
+
+
+        Sigma = 2 * (np.pi / npts) * norm_tvec
+
+        return theta, D, tvec, norm_tvec_square, normal, avec, Sigma
+    
+    @staticmethod
+    def poly_petal_inter(epsilon, n, tau, theta):
+        """
+        Calculate a 6th order polynomial to simulate a damaged petal.
+        Parameters
+        ----------
+        epsilon : float
+            Parameter controlling the shape of the petal (see make_flower).
+        n : int
+            Number of petals (see make_flower).
+        tau : float
+            Percentage of damage; e.g., tau=0.1 means 90% of the petal is intact.
+        theta0 : array-like
+            Boundary parameterization of the first petal.
+        Returns
+        -------
+        f : array-like
+            The polynomial value evaluated at theta.
+        df : array-like
+            The first derivative of the polynomial at theta.
+        ddf : array-like
+            The second derivative of the polynomial at theta.
+        """
+        w = 2*np.pi / n
+
+        a = 1-epsilon
+        b = 1+epsilon*(2*tau-1)
+        c = n**2 * epsilon
+        
+        a0 = b
+        A = np.array([
+            [2**(-6)*w**4, 2**(-4)*w**2, 1/4],
+            [6*2**(-5)*w**4, 4*2**(-3)*w**2, 1],
+            [30*2**(-4)*w**4, 12*2**(-2)*w**2, 2]
+        ])
+        Y = np.array([(a - b) / w**2, 0, c])
+        
+        Coeff = np.linalg.solve(A, Y)
+        
+        C = np.concatenate([Coeff, [a0]])
+        
+        a6, a4, a2 = Coeff[0], Coeff[1], Coeff[2]
+        
+        theta = theta-w/2
+
+        f = a6*theta**6 + a4*theta**4 + a2*theta**2 + a0
+        df = 6*a6*theta**5 + 4*a4*theta**3 + 2*a2*theta
+        ddf = 30*a6*theta**4 + 12*a4*theta**2 + 2*a2
+
+
+        return C, f, df, ddf

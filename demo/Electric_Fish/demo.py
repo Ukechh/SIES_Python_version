@@ -56,13 +56,13 @@ Omega = Omega< np.pi/2
 impd = 1
 
 #Give indices of active receptors
-idxRcv = np.arange(0, Omega.nb_points-1,2)
-Ns = 3
+idxRcv = np.arange(0, Omega.nb_points-1,2**5)
+Ns = 8
 cfg = Fish_circle(Omega, idxRcv, mcenter, mradius, Ns, 2*np.pi, impd=impd)
-#cfg.plot()
-#plt.show()
+cfg.plot()
+plt.show()
 
-stepBEM = 2
+""" stepBEM = 2
 
 P = Electric_Fish(D, cnd, pmtt, cfg, stepBEM)
 #PLot the fish positions and inclusions
@@ -86,4 +86,4 @@ N = 100
     #for f in range(len(freq)):
 F, F_bg, Sx, Sy, mask = P.calculate_field(f, s, z0, width, N, fpsi_bg, fpsi, fphi)
 fig = P.plot_field(s, F, F_bg, Sx, Sy, 100, True)
-plt.show()
+plt.show() """

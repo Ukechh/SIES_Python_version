@@ -249,18 +249,40 @@ class Fish_circle(mconfig):
 
 
     def __init__(self, Omega, idxRcv, Z, Rs, Ns, aov, eorgan0=None, dipole0=None, d0 = np.zeros(2), impd = None):
+        """Initialize measurement configuration for electric fish simulation.
+        Parameters
+        ----------
+        Omega : C2Bound
+            Body of the fish represented as a C2 boundary object
+        idxRcv : ndarray
+            Index array of active receivers. If empty, all boundary points are used as receivers
+        Z : ndarray
+            Center coordinates of the measurement circle
+        Rs : float 
+            Radius of the measurement circle
+        Ns : int
+            Number of sources/measurements
+        aov : float
+            Angle of view covered by all sources (in radians)
+        eorgan0 : ndarray, optional
+            Reference position of the electric organ. If None, calculated from center of mass
+        dipole0 : ndarray, optional
+            Reference direction of the dipole source. If None, uses boundary preferred direction
+        d0 : ndarray, optional
+            2D offset of dipole source relative to center of mass. Defaults to [0,0]
+        impd : float, optional
+            Skin impedance value. Defaults to 0.0
+        Raises
+        ------
+        ValueError
+            If Omega is not a C2Bound object
+        Notes
+        -----
+        This initializes a measurement configuration for electric fish sensing simulation,
+        setting up source and receiver positions around the fish body based on the 
+        specified geometry and parameters.
         """
-			Omega: body of the fish, a C2boundary object
-			idxRcv: index of active receivers. If idxRcv is empty, then all boundary points will be receivers.
-			Z: center of the measurement circle
-			Rs: radius of the measurement circle
-			Ns: number of sources
-			aov: angle of view covered by all sources
-			eorgan0: position of reference of the electric organ (optional)
-			dipole0: direction of reference of the dipole source (optional)
-			d0: offset of the dipole source wrt the center of mass (optional)
-	        impd: impedance of the skin (optional)
-        """
+			
         if not isinstance(Omega, C2Bound):
             raise ValueError("Type Error, the domain must be a C2Boundary")
         
@@ -326,6 +348,7 @@ class Fish_circle(mconfig):
         if n > self._Ns_total-1 or n < 0:
             raise ValueError('Source index out of range')
         return self.dipole_prv[n]
+    
     def Bodies(self, n):
         if n > self._Ns_total-1 or n < 0:
             raise ValueError('Source index out of range')
@@ -340,10 +363,17 @@ class Fish_circle(mconfig):
 
         for s in idx:
             rcv = self.rcv(s)  # (2, N) array
-            ax.plot(rcv[0, :], rcv[1, :], '.', **kwargs)
+            ax.plot(rcv[0, :], rcv[1, :], 'd', markersize=4, **kwargs)
 
             Omega = self.Bodies(s)
             Omega.plot(ax=ax)  # IMPORTANT: Omega needs an ax passed
+            
+            # Add label for fish characteristic size
+            if s == idx[0]:  # Only add label for first fish
+                ax.text(0.02, 0.98, f'δ={Omega.delta:.2f}', 
+                    transform=ax.transAxes, 
+                    bbox=dict(facecolor='white', alpha=0.7),
+                    va='top')
 
             src = self.src(s)  # (2,) vector
             dp = self.dipole(s) * Omega.diameter * 0.25

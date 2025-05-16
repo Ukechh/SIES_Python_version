@@ -34,7 +34,7 @@ D = [B]
 
 #Set conductivity and permitivitty
 
-cnd = 10*np.array([1]) 
+cnd = 10*np.array([1])  
 pmtt = 5*np.array([1])
 
 #Configuration of sources on a circle

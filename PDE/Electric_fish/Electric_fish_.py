@@ -18,22 +18,45 @@ from cfg.mconfig import Fish_circle
 from FundamentalSols import green
 from Operators.Operators import SingleLayer, LmKstarinv, dSLdn, dDLdn, Ident, Kstar, DoubleLayer
 from asymp.CGPT_methods import lbda, make_system_matrix_fast, make_system_matrix, make_block_matrix
+from PDE.Conductivity_R2.make_CGPT import make_matrix_A
+from Tools_fct.General_tools import cart2pol
 
 class Electric_Fish(SmallInclusion):
 
     def __init__(self, D, cnd, pmtt, cfg : Fish_circle, stepBEM):
-        """
-			Constructor of Electric_Fish class
-			Inputs:
-			D: exterior small inclusions
-                list
-			cnd, pmtt: conductivity and permittivity constants of D
-			cfg: configuration acq.Fish_circle
-			stepBEM: sampling step for the P1 BEM
-        """
+        """  Constructor of the Electric_Fish class.
+        This class represents an electric fish with small exterior inclusions and handles
+        the boundary element method (BEM) calculations for both the fish body and inclusions.
+        Parameters
+        ----------
+        D : list
+            List of exterior small inclusions around the fish.
+        cnd : float
+            Conductivity constant of the inclusions.
+        pmtt : float
+            Permittivity constant of the inclusions.
+        cfg : Fish_circle
+            Configuration object containing fish body geometry and impedance data.
+        stepBEM : int
+            Sampling step for the P1 boundary element method.
+            Must be a divisor of the number of points in fish body discretization.
+        Raises
+        ------
+        ValueError
+            If cfg is not an instance of Fish_circle class.
+            If stepBEM is not a valid divisor of the number of points in fish body.
+        Notes
+        -----
+        - Initializes P1 basis functions for the fish body
+        - Creates block matrices for inclusion interactions
+        - Sets up boundary element types (P1 for fish body, P0 for inclusions)
+        - Computes normal derivatives of harmonic functions """
+        
         super().__init__(D, cfg)
+
         if not isinstance(cfg, Fish_circle):
             raise ValueError('The acquisition configuration must be an object of Fish_circle')
+        
         self.Omega = copy.deepcopy(cfg.Omega0)
         self.impd = copy.deepcopy(cfg.impd)
         self.cnd, self.pmtt = cnd, pmtt
@@ -43,14 +66,38 @@ class Electric_Fish(SmallInclusion):
 
         if self.Omega.nb_points % stepBEM:
             raise ValueError('Sampling step for the fish is invalid')
+        
         self.stepBEM1 = stepBEM
         self.stepBEM2 = 1
+        
         #P1 elements for the body
         self.Psi = P1_basis(self.Omega.nb_points, self.stepBEM1) #Psi is of shape (nb_pts, nb_points/ stepBEM1)
+        if self.check_intersections():
+            raise ValueError('Inclusions must not intersect the fish\'s body')
         
         self.KsdS = make_block_matrix(self._D) 
         self.dHdn = self.compute_dHdn()
-    
+
+    def check_intersections(self):
+        """
+        Checks if any inclusions intersect with the fish body at any source position.
+        
+        Returns
+        -------
+        bool
+            True if there are any intersections, False otherwise.
+        """
+        # Check intersections between inclusions and fish body at each source position
+        if not isinstance(self._cfg, Fish_circle):
+            raise ValueError('The acquisition configuration must be an object of Fish_circle')
+        for s in range(self._cfg._Ns_total):
+            Omega = self._cfg.Bodies(s)
+            for incl in self._D:
+                if not Omega.isdisjoint(incl): # Changed condition by removing the not 
+                    return True
+                    
+        return False
+
     @property
     def Grammatrix(self):
         return self.Psi.T @ np.diag(self.Omega.sigma) @ self.Psi
@@ -152,10 +199,10 @@ class Electric_Fish(SmallInclusion):
         fpsi = fpsi[f] [:,s]
         fphi = fphi[f] [:, s, :]
         # TOTAL FIELD
-        Ss = SingleLayer.eval(Omega, fpsi, Z)
-        Ds = DoubleLayer.eval(Omega,fpsi,Z)
+        SsT = SingleLayer.eval(Omega, fpsi, Z)
+        DsT = DoubleLayer.eval(Omega,fpsi,Z)
 
-        V = Hs + Ss - self.impd * Ds
+        V = Hs + SsT - self.impd * DsT
 
         for i in range(self._nbIncl):
          #contribution of the i^th inclusion 
@@ -168,7 +215,7 @@ class Electric_Fish(SmallInclusion):
         V = Hs + Ss - self.impd * Ds
         F_bg = np.reshape(V, (N,N))
         
-        return F, F_bg, Sx, Sy, mask 
+        return F, F_bg, Sx, Sy, mask
      
     def data_simulation(self, f, *args, **kwargs):
         """
@@ -456,7 +503,100 @@ class Electric_Fish(SmallInclusion):
 
     @staticmethod
     def source_vector(Omega, src, dipole):
+        """Calculate the scalar product of the source vector dHdn with the boundary element basis.
+        Args:
+            Omega: The boundary (fish's body or inclusion) on which the source is evaluated.
+                  Must contain points and normal attributes.
+            src: array-like
+                Position coordinates of the source point
+            dipole: array-like
+                Dipole direction vector
+        Returns:
+            ndarray: The source vector calculated as the product of the normal components,
+                    Hessian of Green's function, and dipole direction.
+        """
         _ , Hess = green.Green2D_Hessian(Omega.points, src)
         D = np.block([[np.diag(Omega.normal[0, :]), np.diag(Omega.normal[1, :])]])
         return  D @ Hess @ dipole
 
+    @staticmethod
+    def make_linop_CGPT():
+        pass
+    
+    
+    @staticmethod
+    def make_matrix_SR(cfg, current, Z, impd, ord):
+        """
+        Construct matrices S and R involved in forward linear operator from CGPT to SFR data.
+        
+        Parameters
+        ----------
+        cfg : Fish_circle
+            Acquisition configuration
+        current : ndarray
+            Surface current measurement (du/dn)
+        Z : array-like
+            Reference center coordinates
+        impd : float
+            Impedance of the skin
+        ord : int
+            Maximum order of the CGPT
+        
+        Returns
+        -------
+        S : ndarray
+            Matrix mapping CGPT to measurements, shape (Ns_total, 2*ord)
+        R : list
+            List of matrices for each source position
+        """
+        S = np.zeros((cfg._Ns_total, 2*ord), dtype=np.complex128)
+        R = []
+
+        for s in range(cfg._Ns_total):
+            Xr = cfg.rcv(s)  # receivers of s-th source
+            
+            # Right hand matrix (concerning only receivers)
+            R.append(-1 * make_matrix_A(Xr, Z, ord))
+            
+            xs = cfg.src(s)  # s-th source
+            dipole = cfg.dipole(s)
+            
+            mes = current[s,:]  # surface measurement
+            
+            Omega0 = cfg.Bodies(s)
+            Omega = Omega0.subset(cfg.idxRcv)  # measurement only at active receptors
+            sigma = Omega.sigma
+            normal = Omega.normal
+            
+            for m in range(1, ord+1):
+                # Dipole terms
+                phim, psim = Electric_Fish.phim_psim(m+1, Z[0]-xs[0], Z[1]-xs[1])
+                
+                A = (-1)**m/(2*np.pi) * (dipole[0]*phim + dipole[1]*psim)
+                B = (-1)**m/(2*np.pi) * (dipole[0]*psim - dipole[1]*phim)
+                
+                # Single layer terms
+                phim, psim = Electric_Fish.phim_psim(m, Xr[0,:] - Z[0], Xr[1,:] - Z[1])
+                
+                A -= 1/(2*np.pi*m) * np.sum(sigma*mes * phim)
+                B -= 1/(2*np.pi*m) * np.sum(sigma*mes * psim)
+                
+                # Double layer terms
+                phim, psim = Electric_Fish.phim_psim(m+1, Xr[0,:] - Z[0], Xr[1,:] - Z[1])
+                
+                v1 = phim * normal[0,:] + psim * normal[1,:]
+                A -= impd/(2*np.pi) * np.sum(sigma*mes * v1)
+                
+                v2 = psim * normal[0,:] - phim * normal[1,:]
+                B -= impd/(2*np.pi) * np.sum(sigma*mes * v2)
+                
+                S[s,2*m-2:2*m] = [A, B]
+                
+        return S, R
+    
+    @staticmethod
+    def phim_psim(m,x,y):
+        r, theta  = cart2pol(x)
+        phim = np.cos(m*theta) / (r**m)
+        psim = np.sin(m*theta) / (r**m)
+        return phim, psim

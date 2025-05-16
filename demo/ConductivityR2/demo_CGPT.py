@@ -40,7 +40,7 @@ cnd = 10*np.array([1])
 pmtt = 5*np.array([1])
 
 #Set conductivity and permitivitty (Multiple inclusions)
-cnd = 10*np.array([1,0.5]) 
+cnd = 10*np.array([1,0.5])  
 pmtt = 5*np.array([1,0.5])
 
 #Set up a list of working frequencies

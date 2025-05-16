@@ -312,6 +312,8 @@ class Conductivity(SmallInclusion):
     def plot_field(self, s, F, F_bg, Sx, Sy, nbLine, *args, **kwargs):
         
         src = self._cfg.src(s)
+        # Use log scale for the imaginary part of the field
+        logPerturbed = np.log10(np.abs(F-F_bg) + 1e-8)
 
         fig, axs = plt.subplots(2, 2, figsize=(12, 10))
 
@@ -326,13 +328,13 @@ class Conductivity(SmallInclusion):
         axs[0, 0].axis('image')
         fig.colorbar(cs1, ax=axs[0, 0])
 
-        # Subplot 2: Imaginary part of total field
-        cs2 = axs[0, 1].contourf(Sx, Sy, F.imag, nbLine)
-        axs[0, 1].contour(Sx, Sy, F.real, nbLine, colors='k', linewidths=0.5)
+        # Subplot 2: Log scale of perturbed field
+        cs2 = axs[0, 1].contourf(Sx, Sy, logPerturbed, nbLine)
+        axs[0, 1].contour(Sx, Sy, logPerturbed, nbLine, colors='k', linewidths=0.5)
         axs[0, 1].plot(src[0], src[1], 'gx', *args, **kwargs)
         for i in range(self._nbIncl):
             self._D[i].plot(ax=axs[0, 1], *args, **kwargs)
-        axs[0, 1].set_title("Potential field u, imaginary part")
+        axs[0, 1].set_title("Log scale of perturbed field |u-U|")
         axs[0, 1].axis('image')
         fig.colorbar(cs2, ax=axs[0, 1])
 
@@ -347,7 +349,7 @@ class Conductivity(SmallInclusion):
         fig.colorbar(cs3, ax=axs[1, 0])
 
         # Subplot 4: Imaginary part of perturbed field
-        cs4 = axs[1, 1].contourf(Sx, Sy, (F-F_bg).imag, nbLine)
+        cs4 = axs[1, 1].contourf(Sx, Sy, np.abs((F-F_bg).imag), nbLine)
         axs[1, 1].contour(Sx, Sy, F.real, nbLine, colors='k', linewidths=0.5)
         axs[1, 1].plot(src[0], src[1], 'gx', *args, **kwargs)
         for i in range(self._nbIncl):

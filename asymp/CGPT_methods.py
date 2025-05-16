@@ -51,21 +51,25 @@ def lbda(cnd, pmtt = np.array([]), freq=np.array([]), drude= False, tau = 1.0):
 
 def make_block_matrix(D, V=None):
     """
-    Parameters:
-    -----------
+    Constructs a block matrix for multiple inclusions.
+    
+    Parameters
+    ----------
     D : list
-        A list of C2Boundary inclusion objects
+        List of C2Boundary inclusion objects defining the geometry.
     V : ndarray, optional
-        A vector of scaling factors, where `V[m]` scales the normal vector for the off-diagonal 
-        blocks.
-
-    Returns:
-    --------
-    KsdS : list of lists of numpy.ndarray
-        A 2D list representing the block matrix. Each element is a dense 
-        numpy array (2D) corresponding to a block in the matrix. The diagonal 
-        blocks are the Kstar kernel matrix and the off-diagonal
-        blocks are the kernel matrix of the normal derivative of the Single Layer operator
+        Scaling factors for normal vectors, defaults to ones.
+        
+    Returns
+    -------
+    KsdS : list of lists
+        Block matrix where diagonal blocks are Kstar kernels and 
+        off-diagonal blocks are normal derivatives of Single Layer operator.
+        
+    Raises
+    ------
+    ValueError
+        If inclusions are not mutually disjoint.
     """
     nbIncl = len(D)
     
