@@ -43,7 +43,7 @@ class Ellipse(C2Bound):
         return self._tvec
     def get_avec(self):
         return self._avec
-
+    
 class Banana(C2Bound):
 
     def __init__(self,center,a, b, curvature, nbPoints):

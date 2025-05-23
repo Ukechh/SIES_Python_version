@@ -43,9 +43,9 @@ s = 12
 N = 100
 width = 3
 #Set up the grid
-""" for f in freq:
+for f in freq:
     F, F_bg, Sx, Sy, mask = P.calculate_field(f, s, z0, width, N)
-    P.plot_field(s, F, F_bg, Sx, Sy, nbLine=30) """
+    P.plot_field(s, F, F_bg, Sx, Sy, nbLine=30)
 
 compare_invariants_over_rotations(freq, A, 3, cnd, pmtt, cfg, ord=2, drude=True, normalize='sum')
 """ compare_invariants_over_rotations(freq, B, 15, cnd, pmtt, cfg, ord=2, drude=True, normalize='max')

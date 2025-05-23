@@ -36,7 +36,7 @@ def Green2D_Dn(x,y, normal):
     # X: 2 X M points
     # Y, normal: 2 X N boundary points and the normal vector
     # Output:
-    # G is a matrix of shape (M,N) whose (m,n)-th term is the normal derivative evlauated at (X(:,m), Y(:,n)).
+    # G is a matrix of shape (M,N) whose m-th row is the normal derivative of the green function centered at X[:,m] evaluated on the points Y.
     Gx, Gy = Green2D_grad(y,x)
     Gn = np.diag(normal[0, :]) @ Gx + np.diag(normal[1, :]) @ Gy 
     return Gn.T

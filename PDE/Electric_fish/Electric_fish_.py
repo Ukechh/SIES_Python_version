@@ -11,15 +11,19 @@ import copy
 #Plot packages
 from matplotlib.ticker import MaxNLocator 
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+from matplotlib import colormaps
 #Utility classes and functions
+from scipy.sparse.linalg import LinearOperator, lsqr
 from Tools_fct.BEM_tools import P1_basis, interpolation 
 from PDE.SmallInclusion import SmallInclusion
 from cfg.mconfig import Fish_circle
 from FundamentalSols import green
 from Operators.Operators import SingleLayer, LmKstarinv, dSLdn, dDLdn, Ident, Kstar, DoubleLayer
-from asymp.CGPT_methods import lbda, make_system_matrix_fast, make_system_matrix, make_block_matrix
+from asymp.CGPT_methods import lbda, make_system_matrix_fast, make_block_matrix
 from PDE.Conductivity_R2.make_CGPT import make_matrix_A
 from Tools_fct.General_tools import cart2pol
+from Tools_fct.linsys import SXR_op_symm_list, SXR_op_list
 
 class Electric_Fish(SmallInclusion):
 
@@ -217,7 +221,7 @@ class Electric_Fish(SmallInclusion):
         
         return F, F_bg, Sx, Sy, mask
      
-    def data_simulation(self, f, *args, **kwargs):
+    def data_simulation(self, f):
         """
         Simulates the data of electric fish.
 
@@ -232,32 +236,32 @@ class Electric_Fish(SmallInclusion):
             - Variables starting with a capital letter are measurement matrices.
 
             The dictionary includes the following entries:
-            - vpsi : list of arrays
+            - vpsi : list of arrays  # len(f) arrays of shape (nbBEM1, Ns_total)
                 For each frequency n, each column is a solution vector ψ of the linear system (A.5) for a given source.
-            - vphi[n][i] : list of arrays
+            - vphi[n][i] : list of arrays  # len(f) lists, each with nbIncls arrays of shape (nbBEM2, Ns_total)  
                 For each frequency n and inclusion i, solution vectors φ.
-            - fpsi[n] : list of 2D arrays
-                Function values corresponding to vpsi; shape (nbBEM1, Ns_total).
-            - fphi[n] : list of 3D arrays
-                Function values corresponding to vphi; shape (nbBEM2, Ns_total, nbIncls).
-            - vpsi_bg :ndarray
+            - fpsi[n] : list of 2D arrays  # len(f) arrays of shape (nbBEM1, Ns_total)
+                Function values corresponding to vpsi.
+            - fphi[n] : list of 3D arrays  # len(f) arrays of shape (nbBEM2, Ns_total, nbIncls)
+                Function values corresponding to vphi.
+            - vpsi_bg : ndarray  # shape (nbBEM1, Ns_total)
                 Background solution vectors for equation (A.2).
-            - fpsi_bg : ndarray
+            - fpsi_bg : ndarray  # shape (nbBEM1, Ns_total) 
                 Function values for vpsi_bg.
-            - fpp[n] : list of arrays
+            - fpp[n] : list of arrays  # len(f) arrays of shape (nbBEM1, Ns_total)
                 The post-processed function defined in equation (4.7): (1/2 - K* - ξ dDdn)(dudn - dUdn).
 
             Measurements:
             
-            - Current[n] : list of arrays
+            - Current[n] : list of arrays  # len(f) arrays of shape (Ns_total, Nr)
                 Surface current dUdn for each frequency n.
-            - Current_bg : ndarray
+            - Current_bg : ndarray  # shape (Ns_total, Nr)
                 Background surface current dUdn.
-            - MSR[n] : list of arrays
+            - MSR[n] : list of arrays  # len(f) arrays of shape (Ns_total, Nr)
                 Multi-static response matrix for CGPT reconstruction (see reference [2]).
-            - SFR[n] : list of arrays
+            - SFR[n] : list of arrays  # len(f) arrays of shape (Ns_total, Nr)
                 Space-Frequency response matrix dUdn - dUdn corresponding to the dipolar expansion (section 4.2 in reference [1]).
-            - PP_SFR[n] : list of arrays
+            - PP_SFR[n] : list of arrays  # len(f) arrays of shape (Ns_total, Nr)
                 Post-processed response matrix, defined by equation (4.7).
                 Note: the negative sign before ξ in eq (4.7) of [1] was a typo — it should be positive (+).
 
@@ -269,19 +273,27 @@ class Electric_Fish(SmallInclusion):
         if not isinstance(self._cfg, Fish_circle):
             raise ValueError('The cfg must be an instance of Fish_circle')
         ###Solve forward pb for all positions:
-        if isinstance(f,int):
+        
+        if isinstance(f, (int, float)):
             f = np.array([f])
+        
         #Solution matrix of problem, frequency dependent
         SF = np.zeros((self.nbBEM1 + self._nbIncl*self.nbBEM2, len(f), self._cfg._Ns_total), dtype=np.complex128)
+        
         #Solution matrix of background problem
         SU = np.zeros((self.nbBEM1, self._cfg._Ns_total), dtype=np.complex128)
+        
         #Post Processing
         PP = np.zeros((self.nbBEM1, len(f), self._cfg._Ns_total), dtype= np.complex128)
+
         #Gram matrix as complex:
         Gram = self.Grammatrix.astype(complex)
+
         #Psi and Phi integrals:
-        Psi_int = self.Psi.T @ self.Omega.sigma
+        Psi_int = self.Psi.conj().T @ self.Omega.sigma
+        
         Phi_int = np.zeros((self.nbBEM2, self._nbIncl))
+        
         for i in range(self._nbIncl):
             Phi_int[:,i] = self._D[i].sigma #Boundary integral of P0 elements
 
@@ -290,6 +302,7 @@ class Electric_Fish(SmallInclusion):
         build the block matrices depending on Omega (A, B, C). Remark that both the system matrix and the
         right hand vector are Omega-dependent.
         """
+
         for s in range(self._cfg._Ns_total):
             Omega = self._cfg.Bodies(s)
 
@@ -299,26 +312,28 @@ class Electric_Fish(SmallInclusion):
             
             #Resolution of background system:
             matrix_BEM = np.vstack([matrix_A, Psi_int.reshape(1, -1)])
-            rhs = np.concatenate([self.dHdn[:self.nbBEM1, s], [0.0]])
-            row, _, _, _ = np.linalg.lstsq(matrix_BEM, rhs, rcond=0.0) 
+            rhs = np.append(self.dHdn[:self.nbBEM1, s], 0)
+            row, _, _, _ = np.linalg.lstsq(matrix_BEM, rhs) 
             SU[:, s] = row #Here matrix BEM is of shape (n+1, n) and rhs has shape (n+1,)
             
             for n in range(len(f)):
-                lam = lbda(self.cnd, self.pmtt, f[n])
+                lam = lbda(self.cnd, self.pmtt, f[n], drude=True)
                 matrix_D, _ = make_system_matrix_fast(self.KsdS, lam)
 
-                top = np.hstack([matrix_A, matrix_B], dtype=np.complex128)
-                middle = np.hstack([matrix_C, matrix_D],dtype=np.complex128)
-                row1 = np.hstack([Psi_int.reshape(1, -1), np.zeros((1, self.nbBEM2 * self._nbIncl))], dtype=np.complex128)
-                row2 = np.hstack([np.zeros((1, self.nbBEM1)), Phi_int.reshape(1, -1)], dtype=np.complex128)
-                matrix_BEM = np.vstack([top, middle, row1, row2], dtype=np.complex128)
+                top = np.hstack((matrix_A, matrix_B)).astype(np.complex128)
+                middle = np.hstack((matrix_C, matrix_D)).astype(np.complex128)
+                row1 = np.hstack((Psi_int.reshape(1, -1), np.zeros((1, self.nbBEM2 * self._nbIncl)))).astype(np.complex128)
+                row2 = np.hstack((np.zeros((1, self.nbBEM1)), Phi_int.reshape(1, -1))).astype(np.complex128)
+                
+                matrix_BEM = np.vstack((top, middle, row1, row2)).astype(np.complex128)
 
-                rhs = np.concatenate([self.dHdn[:, s], [0, 0]], dtype=np.complex128)
+                rhs = np.concatenate([self.dHdn[:, s], [0, 0]]).astype(np.complex128)
+
                 upd, _, _, _ = np.linalg.lstsq(matrix_BEM, rhs)
                 SF[:, n, s] = upd
                 
                 rhs = matrix_B @ SF[self.nbBEM1:, n, s]
-                PP[:, n, s] = np.linalg.solve(-Gram, rhs)
+                PP[:, n, s] = -np.linalg.solve(Gram, rhs)
 
         vpsi_bg = SU
         fpsi_bg = interpolation(self.Psi, SU)
@@ -335,6 +350,7 @@ class Electric_Fish(SmallInclusion):
         for m in range(len(f)):
             sol = np.squeeze(SF[:, m, :])
             vpsi.append(sol[:self.nbBEM1, :])
+
             fpsi.append(interpolation(self.Psi, vpsi[m]))
 
             idx = self.nbBEM1
@@ -371,13 +387,28 @@ class Electric_Fish(SmallInclusion):
             PP_SFR.append(pp_sfr[:,self._cfg.idxRcv])
 
         Current_bg = Current_bg[:,self._cfg.idxRcv]
+        # Create dictionary with labeled outputs
+        result = {
+            'frequencies': f,
+            'vpsi': vpsi,
+            'vphi': vphi, 
+            'fpsi': fpsi,
+            'fphi': fphi,
+            'vpsi_bg': vpsi_bg,
+            'fpsi_bg': fpsi_bg,
+            'fpp': fpp,
+            'Current': Current,
+            'Current_bg': Current_bg,
+            'MSR': MSR,
+            'SFR': SFR,
+            'PP_SFR': PP_SFR
+        }
 
-        return f, vpsi, vphi, fpsi, fphi, vpsi_bg, fpsi_bg, fpp, Current, Current_bg, MSR, SFR, PP_SFR  
+        return result 
 
     def plot_field(self, s, F, F_bg, SX, SY, nbLine, subfig, *args, **kwargs):
         if not isinstance(self._cfg, Fish_circle):
             raise ValueError('The cfg must be an instance of Fish_circle')
-        
         def create_plot(ax, data, title, add_colorbar=True, custom_cmap=None):
             if not isinstance(self._cfg, Fish_circle):
                 raise ValueError('The cfg must be an instance of Fish_circle')
@@ -386,33 +417,45 @@ class Electric_Fish(SmallInclusion):
             # Prevent excessive zoom for near-constant fields
             if abs(vmax - vmin) < 1e-10:
                 vmin, vmax = -1, 1
-            
+
+                if np.all(data >= 0):
+                    cmap = colormaps['viridis']  # For positive data
+                elif vmin < 0 and vmax > 0:
+                    cmap = colormaps['RdBu_r']   # For diverging data
+                else:
+                    cmap = colormaps['coolwarm']  # Default diverging colormap
+            else:
+                cmap = custom_cmap
+                
             # Create filled contours with improved styling
-            contour = ax.contourf(SX, SY, data, nbLine, alpha=0.8, extend='both', vmin=vmin, vmax=vmax)
-            
+            contour = ax.contourf(SX, SY, data, nbLine, cmap=cmap, alpha=0.8, 
+                        extend='both', vmin=vmin, vmax=vmax)
+                
+            # Add black contour lines
+            ax.contour(SX, SY, data, nbLine, colors='black', linewidths=0.5, alpha=0.5)
+                
             # Plot inclusions
             for n in range(self._nbIncl):
                 self._D[n].plot(ax=ax, **kwargs)
-            
+                
             # Plot main body (Omega)
             self._cfg.Bodies(s).plot(ax=ax, **kwargs)
             src = self._cfg.src(s)
-           
-            
+               
             # Set appropriate zoom level - avoid excessive zoom
             grid_center_x = (np.max(SX) + np.min(SX)) / 2
             grid_center_y = (np.max(SY) + np.min(SY)) / 2
-        
-        # Set zoom to include furthest part from center plus Omega diameter
+            
+            # Set zoom to include furthest part from center plus Omega diameter
             zoom_radius_x = self.Omega.diameter * 2
             zoom_radius_y = self.Omega.diameter * 1.5
             ax.set_xlim(grid_center_x - zoom_radius_x, grid_center_x + zoom_radius_x)
             ax.set_ylim(grid_center_y - zoom_radius_y, grid_center_y + zoom_radius_y)
-            
+                
             # Add title and grid
             ax.set_title(title, pad=10, fontsize=12)
             ax.grid(True, linestyle='--', alpha=0.4)
-            
+                
             # Add colorbar
             if add_colorbar:
                 cbar = plt.colorbar(contour, ax=ax, shrink=0.9)
@@ -438,7 +481,7 @@ class Electric_Fish(SmallInclusion):
             diff = np.real(F - F_bg)
             contour3 = create_plot(axs[1, 0], diff, 'Perturbed field u-U, real part')  # Diverging colormap for difference
             
-            # Plot 4: Background field with enhanced contours
+            # Plot 4: Background field with contours
             contour4 = create_plot(axs[1, 1], F_bg, 'Background potential field U')
             
             # Apply consistent formatting to all subplots with proper axes labels
@@ -449,13 +492,62 @@ class Electric_Fish(SmallInclusion):
         else:
             # Single plot version with better layout
             fig, ax = plt.subplots(figsize=(10, 8))
-            contour = create_plot(ax, np.real(F), 'Potential field u, real part')
+            contour = create_plot(ax, np.real(F-F_bg), 'Perturbed field u-U, real part')
             ax.set_xlabel('x', fontsize=10)
             ax.set_ylabel('y', fontsize=10)
             
         plt.tight_layout()
         
         return fig
+    
+    def reconstruct_CGPT(self, MSR, Current, ord, maxiter=10**5, tol=1e-5, symmode=0):
+        CGPT_block = []
+        res = []
+        rres = []
+        for t in range(len(MSR)):
+            #Current varies with freuency so we make a new linear operator for each frequency
+            Linop = Electric_Fish.make_linop_CGPT(self._cfg, Current[t], self.impd, ord, symmode)
+            L = Linop['L']
+            As = Linop['As']
+            Ar = Linop['Ar']
+            def mv(x):
+                return L(x, False)
+            def rv(x):
+                return L(x, True)
+            ns, _ = As.shape
+            
+            if isinstance(Ar, np.ndarray):
+                nr, _ = Ar.shape
+            else: 
+                nr, _ = Ar[0].shape  # type: ignore
+            
+           
+            L_op = LinearOperator(shape= (nr*ns, 4*ord*ord), dtype=np.complex128, matvec= mv, rmatvec = rv) # type: ignore
+            
+            toto = MSR[t].reshape(-1,1)
+            if toto.shape == (1,1):
+                toto = toto.reshape(1)
+            X, _, _, r1norm, _, _, _, _, _, _= lsqr(L_op, toto, atol=tol, btol=tol, iter_lim=maxiter)
+            cgpt = X.reshape((2*ord, 2*ord))
+            
+            res.append(r1norm)
+            rres.append(r1norm / np.linalg.norm(MSR[t], 'fro'))
+            
+            if symmode:
+                cgpt = cgpt + cgpt.T
+            
+            CGPT_block.append(cgpt)
+
+        #Print out the results
+        results= {
+            'CGPT': CGPT_block, #type: ignore
+            'residuals': res, #type: ignore
+            'relative_residuals': rres #type: ignore
+        }
+
+        return results
+
+    
     @staticmethod
     def system_matrix_block_A(Omega, type1, step1, impd):
         Id = Ident(Omega, type1, step1)
@@ -520,12 +612,24 @@ class Electric_Fish(SmallInclusion):
         return  D @ Hess @ dipole
 
     @staticmethod
-    def make_linop_CGPT():
-        pass
-    
+    def make_linop_CGPT(cfg, Current, impd, ord, symmode=0):
+        As, Ar = Electric_Fish.make_matrix_SR(cfg, Current, cfg._center, impd, ord)
+        
+        if symmode:
+            L = lambda x, tflag : SXR_op_symm_list(x, As, Ar, tflag)
+        else:
+            L = lambda x, tflag : SXR_op_list(x, As, Ar, tflag)
+        
+        result = {
+            'L': L,
+            'As': As,
+            'Ar': Ar
+        }
+
+        return result
     
     @staticmethod
-    def make_matrix_SR(cfg, current, Z, impd, ord):
+    def make_matrix_SR(cfg, Current, Z, impd, ord):
         """
         Construct matrices S and R involved in forward linear operator from CGPT to SFR data.
         
@@ -561,41 +665,44 @@ class Electric_Fish(SmallInclusion):
             xs = cfg.src(s)  # s-th source
             dipole = cfg.dipole(s)
             
-            mes = current[s,:]  # surface measurement
+            mes = Current[s,:]  # surface measurement
             
             Omega0 = cfg.Bodies(s)
-            Omega = Omega0.subset(cfg.idxRcv)  # measurement only at active receptors
+            Omega = Omega0.subset(cfg.idxRcv)
             sigma = Omega.sigma
             normal = Omega.normal
             
-            for m in range(1, ord+1):
+            for k in range(ord):
+                m = k+1
                 # Dipole terms
-                phim, psim = Electric_Fish.phim_psim(m+1, Z[0]-xs[0], Z[1]-xs[1])
+                phim, psim = Electric_Fish.phim_psim(m+1, np.vstack((Z[0]-xs[0], Z[1]-xs[1])) )
                 
-                A = (-1)**m/(2*np.pi) * (dipole[0]*phim + dipole[1]*psim)
-                B = (-1)**m/(2*np.pi) * (dipole[0]*psim - dipole[1]*phim)
+                A = (((-1)**m ) / (2*np.pi) * (dipole[0]*phim + dipole[1]*psim)).astype(np.complex128)
+                B = (((-1)**m) / (2*np.pi) * (dipole[0]*psim - dipole[1]*phim)).astype(np.complex128)
                 
                 # Single layer terms
-                phim, psim = Electric_Fish.phim_psim(m, Xr[0,:] - Z[0], Xr[1,:] - Z[1])
+                phim, psim = Electric_Fish.phim_psim(m, np.vstack((Xr[0,:] - Z[0], Xr[1,:] - Z[1])) )
                 
-                A -= 1/(2*np.pi*m) * np.sum(sigma*mes * phim)
-                B -= 1/(2*np.pi*m) * np.sum(sigma*mes * psim)
+
+
+                A = (A - 1/(2*np.pi*m) * np.dot(sigma, phim)).astype(np.complex128)
+                B = (B - 1/(2*np.pi*m) * np.dot(sigma, psim)).astype(np.complex128)
                 
                 # Double layer terms
-                phim, psim = Electric_Fish.phim_psim(m+1, Xr[0,:] - Z[0], Xr[1,:] - Z[1])
+                phim, psim = Electric_Fish.phim_psim(m+1, np.vstack((Xr[0,:] - Z[0], Xr[1,:] - Z[1])) ) 
                 
                 v1 = phim * normal[0,:] + psim * normal[1,:]
-                A -= impd/(2*np.pi) * np.sum(sigma*mes * v1)
+                A = A - impd/(2*np.pi) * np.dot(sigma, v1)
                 
                 v2 = psim * normal[0,:] - phim * normal[1,:]
-                B -= impd/(2*np.pi) * np.sum(sigma*mes * v2)
+                B = B - impd/(2*np.pi) * np.dot(sigma,v2)
                 
-                S[s,2*m-2:2*m] = [A, B]
+                S[s, 2*k:2*m] = np.hstack((A, B))
                 
         return S, R
     
     @staticmethod
-    def phim_psim(m,x,y):
+    def phim_psim(m,x):
         r, theta  = cart2pol(x)
         phim = np.cos(m*theta) / (r**m)
         psim = np.sin(m*theta) / (r**m)

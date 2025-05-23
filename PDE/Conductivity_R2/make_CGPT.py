@@ -10,6 +10,44 @@ from cfg.mconfig import mconfig, Coincided
 from Tools_fct.linsys import SXR_op, SXR_op_symm, SXR_op_list, SXR_op_symm_list
 
 def make_linop_CGPT(cfg, ord, symmode : bool = False):
+    """
+    Constructs linear operator for Generalized Polarization Tensors (GPT) computation.
+    This function creates a linear operator for computing CGPTs (Contracted Generalized 
+    Polarization Tensors) based on the given configuration and order. It handles both single 
+    and multiple Dirac sources, and supports symmetric and non-symmetric modes.
+    Parameters
+    ----------
+    cfg : Configuration object
+        Contains all configuration parameters including source and receiver positions,
+        center point, and Dirac source related parameters.
+    ord : int
+        Order of the GPT computation.
+    symmode : bool, optional
+        Whether to use symmetric mode operators. Defaults to False.
+    Returns
+    -------
+    tuple
+        - L : callable
+            Linear operator function that takes array x and tflag as arguments.
+            The tflag determines whether to apply forward or adjoint operation.
+        - As : ndarray
+            Source coefficient matrix of shape (Ns_total, 2*ord) for single Dirac case,
+            or (Ns_total, 2*ord) for multiple Dirac case after contraction.
+        - Ar : ndarray or list
+            Receiver coefficient matrix. For single group (Ng=1), it's an array of shape 
+            (Nr_total, 2*ord). For multiple groups, it's a list of arrays, each of shape
+            (Nr, 2*ord).
+    Notes
+    -----
+    The function handles three main cases:
+    1. Single Dirac source configuration
+    2. Multiple Dirac sources configuration
+    3. Different receiver group configurations (single vs multiple groups)
+    The returned linear operator L is constructed differently based on these cases and
+    the symmode parameter, using either SXR_op or SXR_op_symm for single groups,
+    or SXR_op_list or SXR_op_symm_list for multiple groups.
+    """
+
     #As is of shape (Ns_total, 2*ord)
     if cfg.nbDirac == 1:
         As = make_matrix_A(cfg.all_src(), cfg._center, ord)
@@ -38,7 +76,12 @@ def make_linop_CGPT(cfg, ord, symmode : bool = False):
             L = lambda x, tflag : SXR_op_symm_list(x, As, Ar, tflag)
         else:
             L = lambda x, tflag : SXR_op_list(x, As, Ar, tflag)
-    return L, As, Ar
+    result = {
+        'L': L,
+        'As': As,
+        'Ar': Ar
+    }
+    return result
 
 def make_matrix_A(Xs, z, ord):
     """

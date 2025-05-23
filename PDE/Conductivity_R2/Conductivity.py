@@ -67,26 +67,39 @@ class Conductivity(SmallInclusion):
         else:
             src = self._cfg.src(sidx)
             for i in range(self._nbIncl):
-                toto = green.Green2D_Dn(src, self._D[0].points, self._D[0].normal)
+                toto = green.Green2D_Dn(src, self._D[i].points, self._D[i].normal)
                 r[:, i, :] = toto.T
         
         r = r.reshape(npts*self._nbIncl, len(sidx)) #Returns a size (npts*nbIncl, indices) matrix
-        return r
+        return r #For p = i*nb_Incl + j, r(:,s) = dGdn of the j-th inclusion at the i-th point for the s-th source 
 
     def compute_Phi(self, f, s=None):
-        """
-        Construct the Phi vector for each given frequency and at source s if indicated
+        """"
+        Construct the Phi vectors for each inclusion at given frequencies by solving the linear system Amat * Phi = dGdn.
+        The (i,j)th element of the k-th term in the output represents the potential at the i-th point 
+        of the k-th inclusion boundary, due to the j-th source (if multiple sources are provided).
+        f : ndarray
+            Array of tested frequencies for inclusions.
+            Shape must be either (1,) or (NbIncl,).
+            Used to compute the contrast parameter lambda.
+        s : int, optional
+            Source index for computing specific dGdn.
+            If None, uses precomputed dGdn for all sources.
+            Default is None.
+        P : list[ndarray]
+            List of length nbIncl containing the Phi vectors for each inclusion.
+            Each element is a ndarray of shape (npts, 1) if single source,
+            or shape (npts, Ns_total) if all sources are used,
+            where:
+            - npts is the number of discretization points per inclusion
+            - Ns_total is the total number of sources
+        Notes:
+        The system solves: Amat * Phi = dGdn where:
+        - Amat is the full system matrix of shape (npts*NbIncl, npts*NbIncl)
+        - dGdn is of shape (npts*NbIncl, 1) for single source or (npts*NbIncl, Ns_total) for all sources
+        - The solution is split into NbIncl vectors, one for each inclusion
         
-        Parameters:
-        -------------
-        f:  array of tested frequencies for inclusions (Shape must be either (1,) or (NbIncl,)
-            ndarray[float]
-        s: source index
-            int
-        Returns:
-        -------------
-        P: List of (npts,1) vectors conaining the Phi vector for each inclusion, list of length nbIncl
-            List[ndarray]
+       
         """
         npts = self._D[0].nb_points
         l = lbda(self._cnd, self._pmtt, f, self.drude)
@@ -109,6 +122,8 @@ class Conductivity(SmallInclusion):
 
     def __init__(self, D, cnd, pmtt, cfg, drude=True):
         super().__init__(D, cfg)
+        cnd = np.array([cnd]) if isinstance(cnd, (int, float)) else cnd
+        pmtt = np.array([pmtt]) if isinstance(pmtt, (int, float)) else pmtt
 
         if len(cnd) < self._nbIncl or len(pmtt) < self._nbIncl:
             raise ValueError("Conductivity and permittivity must be specified for each inclusion!")
@@ -145,7 +160,7 @@ class Conductivity(SmallInclusion):
 
         #Set the default value of freq
         if f is None:
-            f = np.zeros(1) 
+            f = np.zeros(1)
         if not isinstance(f, np.ndarray) :
             f = np.array([f])
         #Initialize the output and the index
@@ -166,7 +181,7 @@ class Conductivity(SmallInclusion):
 
             out_MSR.append(MSR) #One MSR matrix per working frequency
         return out_MSR, f
-    
+
     def calculate_field(self, f, s, z0, width, N):
         """
         Compute the total and background fields on a grid centered at `z0`, 
@@ -224,9 +239,9 @@ class Conductivity(SmallInclusion):
 
         return F, F_bg, Sx, Sy, mask
     
-    def calculate_FFv(self, f, width, N):
+    def calculate_v_hat(self, f, width, N):
         """
-        Compute the far-field expansion v(ξ) = ξ + S_B (λ I - K^*)^{-1} [v](ξ)
+        Compute the inner expansion function  v(ξ) = ξ + S_B (λ I - K^*)^{-1} [v](ξ)
         on a grid centered at `z0` in the ξ = (x - z0)/δ coordinate frame.
 
         Parameters:
@@ -269,7 +284,7 @@ class Conductivity(SmallInclusion):
         v = Z.copy().astype(np.complex128)
 
         for i in range(self._nbIncl):
-            Sphi = self.far_field(v, f, i)
+            Sphi = self.v_hat(v, f, i)
             v += Sphi  # shape (2, N**2)
 
         Vx = v[0, :].reshape((N, N))
@@ -281,9 +296,9 @@ class Conductivity(SmallInclusion):
         sSy = Sy / delta
         return Vx, Vy, Sx, Sy, mask, sSx, sSy
 
-    def far_field(self, x, freq, idx):
+    def v_hat(self, x, freq, idx):
         """
-        Computes the far field function v(ξ) = ξ + S_B (λ I - K^*)^{-1} [v](ξ) at the point ξ = (x-z0) / delta 
+        Computes the close field function v(ξ) = ξ + S_B (λ I - K^*)^{-1} [v](ξ) at the point ξ = (x-z0) / delta 
         where z0 is the center of the inclusion of index idx, at frequency freq and for delta the scaling coefficient
         """
 
@@ -382,7 +397,7 @@ class Conductivity(SmallInclusion):
 
         Returns:
         ------------------
-        CGPT: Corresponding CGPT matrix for each working frequency
+        CGPT: Corresponding CGPT matrix for each working frequency the matrix is 
             list
         res: Residual of the approximation using the desired method
             list
@@ -390,18 +405,21 @@ class Conductivity(SmallInclusion):
             list
         """
         if L is None:
-            L, As, Ar = make_linop_CGPT(self._cfg, ord, symmode)
+            Linop = make_linop_CGPT(self._cfg, ord, symmode)
         else:
-            _, As, Ar = make_linop_CGPT(self._cfg, ord, symmode)
+            Linop = make_linop_CGPT(self._cfg, ord, symmode)
+        As = Linop['As']
+        Ar = Linop['Ar']
+        L = Linop['L']
         res = []
         rres= []
-        CGPT = []
+        CGPT_block = []
         if method == 'pinv':
             for t in range(len(MSR)):
                 iArT = np.linalg.pinv(Ar).T
                 iAs = np.linalg.pinv(As)
-                CGPT.append(iAs @ MSR[t] @ iArT)
-                res.append(np.linalg.norm(MSR[t] - Ar @ CGPT[t] @ As.conj().T, 'fro'))
+                CGPT_block.append(iAs @ MSR[t] @ iArT)
+                res.append(np.linalg.norm(MSR[t] - Ar @ CGPT_block[t] @ As.conj().T, 'fro'))
                 rres.append(res[t] / np.linalg.norm(MSR[t], 'fro'))
         elif method=='lsqr':
             def mv(x):
@@ -425,5 +443,11 @@ class Conductivity(SmallInclusion):
                 rres.append(r1norm / np.linalg.norm(MSR[t], 'fro'))
                 if symmode:
                     cgpt = cgpt + cgpt.T
-                CGPT.append(cgpt)
-        return CGPT, res, rres
+                CGPT_block.append(cgpt)
+        results = {
+            'CGPT': CGPT_block,
+            'residuals': res,
+            'normalized_residuals': rres
+        }
+        
+        return results

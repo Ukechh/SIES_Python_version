@@ -22,7 +22,8 @@ class C2Bound:
         self._normal = normal
         self.nb_points = npts
         self.delta = 1
-        
+        if npts is None:
+            self.nb_points = points.shape[1]
         flag = self.check_sampling(points)
         if not flag:
             warnings.warn("Curve may contain singluarities", RuntimeWarning)
@@ -142,12 +143,11 @@ class C2Bound:
     def subset(self, idx):
         if max(idx.shape) > self.nb_points:
             raise ValueError("Value Error: the index of the subset is wrong!");
-        sub = copy.deepcopy(self);
-        sub._points = self._points[:,idx];
-        sub.nb_points = max(idx.shape);
-        sub._tvec = self._tvec[:,idx];
-        sub._avec = self._avec[:,idx];
-        sub._normal = self._normal[:,idx];
+        points = self._points[:,idx]
+        tvec = self._tvec[:,idx]
+        avec = self._avec[:,idx]
+        normal = self._normal[:,idx]
+        sub = C2Bound(points, tvec, avec, normal)
         return sub
 
     def isinside(self, x):
@@ -207,7 +207,7 @@ class C2Bound:
 
         Z = np.vstack((Sx.ravel(), Sy.ravel()))
 
-        mask = np.ones(Z.shape[1]);
+        mask = np.ones(Z.shape[1])
 
         for n in range(Z.shape[1]):
             dd = np.linalg.norm(self._points- Z[:,n].reshape(2,1), axis=0)
@@ -264,29 +264,47 @@ class C2Bound:
         return new_boundary
 
     def global_perturbation(self, epsilon, p, n):
+        """ 
+        Perturb the boundary by a global perturbation
+        Parameters:
+        -------------
+        epsilon: strength of the perturbation
+		p: periodicity of the perturbation
+		n: strength of the smooth filter, integer
+        
+        Returns:
+        --------------
+            new_boundary: perturbed boundary
+                C2Bound
+        """
         #Define theta and the box
         theta0 = self.get_theta()
         box = self.get_box()
 
         if abs(epsilon) > 0:
-            D = self._points + epsilon*np.cos(p*theta0)*self._normal
+            # Create periodic perturbation along normal direction
+            perturbation = np.cos(p*theta0)
+            D = self._points + epsilon * perturbation * self._normal
+            
+            # Smooth the boundary if n > 0
             if n > 0:
-                k = np.ones(n) / n
+                k = np.ones((1,n)) / n
                 mode = 'same'
-                M = max(D.shape)
-                d1 = np.array([D[0,:], D[0,:], D[0,:]])
-                d2 = np.array([D[1,:], D[1,:], D[1,:]])
-
-                d1 = np.convolve(d1,k,mode)
-                d2 = np.convolve(d2,k,mode)
-
-                D = np.array([d1[M:2*M], d2[M:2*M]])
             
+                M = D.shape[1]  # length of D along axis 1
+                d1 = np.concatenate([D[0,:], D[0,:], D[0,:]])
+                d2 = np.concatenate([D[1,:], D[1,:], D[1,:]])
+
+                d1 = np.convolve(d1.flatten(), k.flatten(), mode)
+                d2 = np.convolve(d2.flatten(), k.flatten(), mode)
+            
+                D = np.vstack([d1[M:2*M], d2[M:2*M]])
+            
+            # Rescale the boundary
             D1, tvec, avec, normal = bm.rescale(D, theta0, self.nb_points, box)
-            
-            new_boundary = C2Bound(D1,tvec,avec,normal,nstr=self._name_str,com=[])
+            new_boundary = C2Bound(D1, tvec, avec, normal, nstr=self._name_str, npts=D1.shape[1])
         else:
-            new_boundary= copy.deepcopy(self)
+            new_boundary = copy.deepcopy(self)
         return new_boundary
     
     def local_perturbation(self, epsilon, pos, width, theta=None):

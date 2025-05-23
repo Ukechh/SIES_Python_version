@@ -10,9 +10,6 @@ from FundamentalSols.green import Green2D, Green2D_grad
 from figure.C2Boundary.C2Boundary import C2Bound
 from PDE.Conductivity_R2.Conductivity import Conductivity
 
-def outer_expansion_conductivityR2():
-    pass
-
 def inner_expansion_conductivityR2_0(D : C2Bound):
     '''
     Parameters:
@@ -54,13 +51,15 @@ def inner_expansion_conductivityR2_1(C : Conductivity, freq : float, w = 2.0, N 
     
     Z = np.vstack((Sx.ravel(), Sy.ravel()), dtype=np.complex128) #Shape (2, N**2)
 
-    v = C.far_field(Z, freq, 0) #Far field computes v((Z-z0)/delta), i.e 
+    v = C.v_hat(Z, freq, 0) #Far field computes v((Z-z0)/delta)
     
     Ux, Uy = Green2D_grad(z0, np.zeros((2,1)))
     
     U = np.vstack((Ux,Uy))
     
     u1 = np.dot(U.T, v).astype(np.complex128)
+
+    u1 = u1.T
     
     u1 = u1.reshape(N,N)
 
@@ -147,3 +146,6 @@ def plot_inner_expansion(C : Conductivity, freq : float, s : int,  w : float, N 
     axs[1,2].set_title("| U - (u₀ + δ·u₁) |")
     axs[1,2].axis('image')
     fig.colorbar(cs6, ax=axs[1,2])
+
+def GPT_from_expansion(C : Conductivity, freq: float, s: int):
+    pass

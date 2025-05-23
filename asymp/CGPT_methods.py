@@ -24,6 +24,9 @@ def lbda(cnd, pmtt = np.array([]), freq=np.array([]), drude= False, tau = 1.0):
     freq : float or ndarray of shape (1,), optional
         Frequency at which to evaluate λ. Must be a positive float or array-like with one positive value.
 
+    drude: bool, indicates if Drude model should be used.
+        If True, the Drude model is applied to the conductivity.
+    tau: float, relaxation time for the Drude model.
     Returns:
     --------
     lam : ndarray of shape (NbIncl,)
@@ -123,7 +126,7 @@ def make_system_matrix_fast(KsdS, l):
     for n in range(nb_incls):
         size = KsdS[n][n].shape[0]
         dtype = KsdS[n][n].dtype
-        Acell[n][n] = l[n] * np.eye(size, dtype=dtype) + KsdS[n][n]
+        Acell[n][n] = l[n] * np.eye(size, dtype=dtype) + Acell[n][n]
 
     Amat = np.block(Acell)
     return Amat, Acell
@@ -180,3 +183,36 @@ def theoretical_CGPT_fast(D, KsdS, lam, ord):
     M = np.block([[CC, CS],[SC, SS]])
     return M
 
+def CGPT2CCGPT(CGPT):
+    n = CGPT.shape[0] // 2
+    blocks = CGPT.reshape(n, 2, n, 2).swapaxes(1, 2)
+    
+    N1 = np.zeros((n, n), dtype=np.complex128)
+    N2 = np.zeros((n, n), dtype=np.complex128)
+    
+    for i in range(n):
+        for j in range(n):
+            M = blocks[i, j]
+            N1[i,j] = (M[0,0] - M[1,1]) + 1j*(M[0,1] + M[1,0])
+            N2[i,j] = (M[0,0] + M[1,1]) + 1j*(M[0,1] - M[1,0])
+    
+    return N1, N2
+
+def CCGPT_transform(N1,N2,T0,S0,Phi0=0.0):
+    ord = N1.shape[0]
+    if not isinstance(T0, complex):
+        z = T0[0] + 1j * T0[1]
+    else:
+        z = T0
+    Comb = np.zeros((ord, ord), dtype=np.complex128)
+    Z = np.zeros((ord, ord), dtype=np.complex128)
+    for m in range(ord):
+        for n in range(m+1):
+                Comb[m,n] = math.comb(m,n)
+                Z[m,n] = z**(m-n)
+    Cz = Comb * Z
+    w = np.exp(1j*Phi0)*S0
+    Gw = np.diag([w**(m+1) for m in range(ord)])
+    Z1 = Cz @ Gw @ N1 @ Gw @ Cz.T
+    Z2 = np.conj(Cz @ Gw) @ N2 @ Gw @ Cz.T
+    return Z1, Z2 

@@ -49,10 +49,10 @@ def add_white_noise_list(data, nlvl):
     variance = []
     for f in range(len(data)):
         X = data[f]
-        if data[f].dtype() == np.complex128:
+        if data[f].dtype == np.complex128:
             Y , sigma = add_white_noise_mat_complex(X, nlvl)
         else:
-            Y, sigma = add_white_noise_mat(X, nlvl)
+            Y , sigma = add_white_noise_mat(X, nlvl)
         noisy_data.append(Y)
         variance.append(sigma)
     return noisy_data, variance

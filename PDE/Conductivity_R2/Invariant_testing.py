@@ -7,6 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '/../../
 from scipy.sparse.linalg import lsqr, LinearOperator
 import numpy as np
 import matplotlib.pyplot as plt
+import math
 from PDE.Conductivity_R2.Conductivity import Conductivity
 
 def compare_invariants_over_rotations(
@@ -199,3 +200,24 @@ def generate_translated_shapes(shape, ntranslations):
         translated = shape + translation_vector  # Uses __add__ operator for translation
         translated_shapes.append(translated)
     return translated_shapes
+
+def generate_complex_harmonic_coefficients(order):
+    """
+    Generate complex harmonic coefficients for a given order, that is: a_{\alpha}^n = \binom{n}{k} i^{n-k} for \alpha = (k, n-k).
+
+    Parameters
+    ----------
+    order : int
+        The order of the harmonic polynomial.
+
+    Returns
+    -------
+    coeffs : np.ndarray
+        Array of complex harmonic coefficients.
+    """
+    coeffs = np.zeros((order,), dtype=np.complex128)
+    for n in range(order):
+        coeffs[n] = math.comb(order, n) * (1j)**(order-n) 
+    
+    return coeffs
+

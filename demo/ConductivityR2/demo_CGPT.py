@@ -62,11 +62,13 @@ pinv_diff = []
 data, _ = P.data_simulation(freq)
 
 #Reconstruct the CGPT matrix from lsqr
-ls, ls_res, ls_rres = P.reconstruct_CGPT(data, ord = order, method='lsqr')
+least_sq_cgpts = P.reconstruct_CGPT(data, ord = order, method='lsqr')
+ls = least_sq_cgpts['CGPT']
 #print(f'The reconstructed CGPT matrix of order 2 for frequency {f}, using lsqr is: \n {ls}')
 
 #Reconstruct the CGPT matrix from penrose inverse
-pinv, pinv_res, pinv_rres = P.reconstruct_CGPT(data, ord=order, method='pinv')
+pinv_cgpt = P.reconstruct_CGPT(data, ord=order, method='pinv')
+pinv = pinv_cgpt['CGPT']
 #print(f'The reconstructed CGPT matrix of order 2 for frequency {f}, using pinv is: \n {pinv}')
 
 for i, f in enumerate(freq):
