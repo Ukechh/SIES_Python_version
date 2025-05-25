@@ -118,7 +118,6 @@ def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=2, noise_level=0.0):
     if ord >= 2:
         return I1, I2
     else:
-        print(f"The shape of elements in mu is {mu[0].shape}")
         return tau, mu
 
 def ShapeRecognition_ShapeInvariants(I1_dico, I2_dico, I1, I2):
@@ -221,7 +220,6 @@ def ShapeRecognition_PT_freq(mu_dico, mu):
         d = np.abs(mu_dico[j] - mu[0])  # Compute absolute difference
         d_sum = np.sum(d, axis=0)  # Sum along columns
         d_total[j] = np.sum(d_sum)  # Sum all elements
-        print(f'Error vector for shape {j} is {d_sum}')
     shape_index = np.argmin(d_total)
     print(d_total)
     return shape_index

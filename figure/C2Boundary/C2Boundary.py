@@ -393,7 +393,7 @@ class C2Bound:
         D0 = D0.copy()  # work on a copy
 
         # Resize the boundary to fit in box of size nsize
-        if nsize is not None:
+        if not nsize is None:
             minx, maxx = D0[0, :].min(), D0[0, :].max()
             miny, maxy = D0[1, :].min(), D0[1, :].max()
 
@@ -414,7 +414,32 @@ class C2Bound:
         D, tvec, avec, normal = C2Bound.boundary_vec_interpl(D0_dspl, theta0_dspl, theta)
 
         return D, tvec, avec, normal
-    
+    @staticmethod
+    def rescale_diff(D0, theta0, nbPoints, nsize=None):
+        
+        if not nsize is None:
+            minx = np.min(D0[0,:]) 
+            maxx = np.max(D0[0,:]) 
+            miny = np.min(D0[1,:]) 
+            maxy = np.max(D0[1,:])
+            
+            z0 = np.array([(minx+maxx)/2, (miny+maxy)/2]).reshape((2,-1))
+            D0 = np.array([(D0[0,:]-z0[0])*(nsize[0]/(maxx-minx)), (D0[1,:]-z0[1])*(nsize[1]/(maxy-miny))]).reshape(2,-1)
+
+        theta = np.arange(nbPoints) / nbPoints* 2*np.pi
+        # Use scipy's CubicSpline for interpolation
+        cs_x = CubicSpline(theta0, D0[0, :])
+        cs_y = CubicSpline(theta0, D0[1, :])
+        
+        # Interpolate points
+        px = cs_x(theta)
+        py = cs_y(theta)
+        D = np.vstack((px, py))
+        
+        # Get vectors using boundary_vec_interpl method
+        D, tvec, avec, normal = C2Bound.boundary_vec_interpl(D, theta)
+        
+        return D, tvec, avec, normal
     @staticmethod
     def boundary_vec_interpl(points0, theta0,theta=None):
         """
