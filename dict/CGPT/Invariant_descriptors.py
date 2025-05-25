@@ -28,7 +28,7 @@ def ShapeDescriptors_CGPT(CGPT):
     
     return J1, J2, S1, S2, I1, I2
 
-def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=1, noise_level=0.0):
+def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=2, noise_level=0.0):
     """
     Computes the rigid motion invariants of the CGPTs of the dictionary elements
     Parameters:
@@ -60,6 +60,8 @@ def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=1, noise_level=0.0):
     
     I1 = np.array([[np.zeros((ord, ord)) for _ in range(len(freq))] for _ in range(len(dict))], dtype=object)
     I2 = np.array([[np.zeros((ord, ord)) for _ in range(len(freq))] for _ in range(len(dict))], dtype=object)
+    mu = []
+    tau = np.array([[np.zeros((2,)) for _ in range(len(freq))] for _ in range(len(dict))], dtype=object)
     # Loop over the shapes in the dictionary
     for i, shape in enumerate(dict):
         # Generate the conductivity instance
@@ -81,21 +83,43 @@ def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=1, noise_level=0.0):
             P = Electric_Fish([shape], cnd, pmtt, cfg, stepBEM=2)
             # Compute data for the shape inclusion
             data = P.data_simulation(freq)
-            MSR = data['MSR']
-            Current = data['Current']
-            # Add noise to the data
-            if noise_level > 0:
-                data, _ = add_white_noise_list(data, noise_level)
-            # Compute CGPTs
-            rCGPT = P.reconstruct_CGPT(MSR, Current, ord)
-            CGPT = rCGPT['CGPT']
-            for j in range(len(freq)):
-                #Compute the invariants for the jth frequency
-                _,_,_,_, I1_, I2_ = ShapeDescriptors_CGPT(CGPT[j])
-                I1[i][j] = I1_
-                I2[i][j] = I2_
-        print(" Invariants computed! ")
-    return I1, I2
+            
+            if ord >= 2 :
+                MSR = data['MSR']
+                Current = data['Current']
+
+                # Compute CGPTs
+                rCGPT = P.reconstruct_CGPT(MSR, Current, ord)
+                CGPT = rCGPT['CGPT']
+                for j in range(len(freq)):
+                    #Compute the invariants for the jth frequency
+                    _,_,_,_, I1_, I2_ = ShapeDescriptors_CGPT(CGPT[j])
+                    I1[i][j] = I1_
+                    I2[i][j] = I2_
+                print(" Invariants computed! ")    
+            else:
+                SFR = data['SFR']
+                Current_bg = data['Current_bg']
+                #Compute PTs
+                p = P.reconstruct_PT(SFR, Current_bg)
+                PT = p['PT']
+                ti = np.empty(1)
+                for j in range(len(freq)):
+                    tau[i][j] = ShapeDescriptors_PT(PT[j]) #type: ignore
+                    if j == 0:
+                        ti = tau[i][j].reshape(2,1)
+                    else:
+                        ti = np.hstack((ti, (tau[i][j]).reshape(2,1)))
+                tmax = np.array(
+                    (np.max(ti[0,:]),
+                    np.max(ti[1,:])) ).reshape(2,1)
+                mu.append(ti / tmax)
+                print('Ratio computed!')
+    if ord >= 2:
+        return I1, I2
+    else:
+        print(f"The shape of elements in mu is {mu[0].shape}")
+        return tau, mu
 
 def ShapeRecognition_ShapeInvariants(I1_dico, I2_dico, I1, I2):
     """
@@ -182,3 +206,22 @@ def ShapeRecognition_CGPT_majority_voting_frequency(I1_dico_freq, I2_dico_freq, 
     shape_index = np.argmax(votes)
     
     return shape_index, votes
+
+def ShapeDescriptors_PT(PT):
+    
+    tau = np.linalg.svd(PT, compute_uv=False)
+    
+    tau = tau.reshape((2,))
+    
+    return tau
+
+def ShapeRecognition_PT_freq(mu_dico, mu):
+    d_total = np.zeros(len(mu_dico))
+    for j in range(len(mu_dico)):
+        d = np.abs(mu_dico[j] - mu[0])  # Compute absolute difference
+        d_sum = np.sum(d, axis=0)  # Sum along columns
+        d_total[j] = np.sum(d_sum)  # Sum all elements
+        print(f'Error vector for shape {j} is {d_sum}')
+    shape_index = np.argmin(d_total)
+    print(d_total)
+    return shape_index

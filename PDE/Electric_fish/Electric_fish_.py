@@ -506,10 +506,10 @@ class Electric_Fish(SmallInclusion):
         rres = []
         for t in range(len(MSR)):
             #Current varies with freuency so we make a new linear operator for each frequency
-            Linop = Electric_Fish.make_linop_CGPT(self._cfg, Current[t], self.impd, ord, symmode)
-            L = Linop['L']
-            As = Linop['As']
-            Ar = Linop['Ar']
+            op = Electric_Fish.make_linop_CGPT(self._cfg, Current[t], self.impd, ord, symmode)
+            L = op['L']
+            As = op['As']
+            Ar = op['Ar']
             def mv(x):
                 return L(x, False)
             def rv(x):
@@ -547,7 +547,45 @@ class Electric_Fish(SmallInclusion):
 
         return results
 
-    
+    def reconstruct_PT(self, SFR, Current_bg, maxiter=100, tol= 1e-3, symmode=0):
+        PT = []
+        res = []
+        rres = []
+        for f in range(len(SFR)):
+            op = Electric_Fish.make_linop_PT(self._cfg, Current_bg, self.impd, symmode)
+            L = op['L']
+            As = op['As']
+            Ar = op['Ar']
+            def mv(x):
+                return L(x, False)
+            def rv(x):
+                return L(x, True)
+            
+            ns = As.shape[0]
+            if isinstance(Ar, np.ndarray):
+                nr, _ = Ar.shape
+            else: 
+                nr, _ = Ar[0].shape  # type: ignore
+
+            L_op = LinearOperator(shape= (ns*nr, 4),dtype= np.complex128, matvec=mv, rmatvec = rv) #type: ignore
+
+            toto = SFR[f].reshape(-1,1)
+            if toto.shape == (1,1):
+                toto = toto.reshape(1)
+            X, _, _, r1norm, _, _, _, _, _, _= lsqr(L_op, toto, atol=tol, btol=tol, iter_lim=maxiter)
+            pt = X.reshape((2, 2))
+            
+            res.append(r1norm)
+            rres.append(r1norm / np.linalg.norm(SFR[f], 'fro'))
+            PT.append(pt)
+        results = {
+            'PT': PT,
+            'res': res,
+            'rres': rres
+        }
+        return results
+
+
     @staticmethod
     def system_matrix_block_A(Omega, type1, step1, impd):
         Id = Ident(Omega, type1, step1)
@@ -702,8 +740,75 @@ class Electric_Fish(SmallInclusion):
         return S, R
     
     @staticmethod
-    def phim_psim(m,x):
+    def phim_psim(m,x): 
         r, theta  = cart2pol(x)
         phim = np.cos(m*theta) / (r**m)
         psim = np.sin(m*theta) / (r**m)
         return phim, psim
+    
+    @staticmethod
+    def make_linop_PT(cfg, Current, impd, symmode):
+        M = Electric_Fish.make_matrix_gradUG(cfg, cfg._center, Current, impd)
+        As = M['dU']
+        Ar = M['dG']
+        if symmode:
+            L = lambda x, tflag : SXR_op_symm_list(x, As, Ar, tflag)
+        else:
+            L = lambda x, tflag : SXR_op_list(x, As, Ar, tflag)
+        
+        results = {
+            'L': L,
+            'As': As, 
+            'Ar': Ar
+        }
+        
+        return results
+    @staticmethod
+    def make_matrix_gradUG(cfg, Z, current_bg, impd):
+        """
+        Construct the matrices grad U and grad(dGdn) which are involved in the
+        post-processed dipolar expansion eq 4.8
+        Parameters:
+        ---------------
+         cfg: acquisition configuration
+         Z: reference point of measurement
+         current_bg: the function psi (Be carful, do not use the coefficient vector of
+         the P1 basis) solution of the linear system A.2 measured on the skin
+         impd: impedance
+        Returns:
+        -----------------
+         dU: a cfg.Ns_total X 2 matrix. The s-th row correspond to grad U_s(z) with U_s
+         the background solution with source at x_s, and z is the center of measurment
+         dG: a list of cfg.Nr X 2 matrix, The r-th row correspond to
+         grad(dGdn)(x_r, z), with x_r the r-th receiver
+        """
+        if not isinstance(cfg, Fish_circle):
+            raise ValueError('cfg must be an instance of fish circle')
+        _, H = green.Green2D_Hessian(cfg.all_src(), Z)
+        
+        grad_SL = np.zeros((cfg._Ns_total, 2), dtype=np.complex128)
+        grad_DL = np.zeros((cfg._Ns_total,2), dtype=np.complex128)
+        
+        toto = cfg.all_dipole()
+        grad_src = np.hstack((np.diag(toto[0,:]), np.diag(toto[1,:]))) 
+        grad_src = grad_src @ H
+        dG = []
+        
+        for s in range(cfg._Ns_total):
+            Omega0 = cfg.Bodies(s)
+            Fish = Omega0.subset(cfg.idxRcv)
+            #Gradient of the single layer potential
+            grad_SL[s,:] = SingleLayer.eval_grad(Fish, current_bg[s,:], Z).reshape((2,))
+            #Gradient of the double layer
+            grad_DL[s,:] = DoubleLayer.eval_grad(Fish, current_bg[s,:], Z).reshape((2,))
+            #Hessian matrix at receivers
+            _, H = green.Green2D_Hessian(cfg.rcv(s), Z)
+            DN = np.hstack((np.diag(Fish.normal[0,:]), np.diag(Fish.normal[1,:])))
+            dG.append(-DN @ H)
+        dU = grad_src + grad_SL - impd*grad_DL
+        results = {
+            'dU': dU,  # Gradient of background potential
+            'dG': dG   # Gradient of Green's function normal derivatives
+        }
+        
+        return results

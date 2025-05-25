@@ -231,8 +231,10 @@ class SingleLayer(Operator):
             Gradient values at X (2 x len(X))
         """
         Gx, Gy = green.Green2D_grad(D.points, X)
-        v1 = Gx @ (F.ravel() * D.sigma.ravel())
-        v2 = Gy @ (F.ravel() * D.sigma.ravel())
+        Gx = Gx.ravel()
+        Gy = Gy.ravel()
+        v1 = np.dot(Gx, F.ravel() * D.sigma.ravel())
+        v2 = np.dot(Gy,F.ravel() * D.sigma.ravel())
         r = np.vstack((v1, v2))
         return r
 

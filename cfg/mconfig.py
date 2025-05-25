@@ -341,7 +341,11 @@ class Fish_circle(mconfig):
     def all_dipole(self):
         r = np.array([])
         for g in range(self._Ng):
-            r = np.hstack((r, self.dipole_prv[g]))
+            dip = self.dipole_prv[g].reshape((2,1))
+            if g == 0:
+                r = dip
+            else:
+                r = np.hstack((r,dip))
         return r
     
     def dipole(self, n): #Watch out as some of the parent class attributes are not initialized...
