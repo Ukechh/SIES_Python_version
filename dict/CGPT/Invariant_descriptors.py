@@ -7,20 +7,21 @@ import math
 from asymp.CGPT_methods import CGPT2CCGPT, CCGPT_transform
 from PDE.Conductivity_R2.Conductivity import Conductivity
 from PDE.Electric_fish.Electric_fish_ import Electric_Fish
-from Tools_fct.General_tools import add_white_noise_list
+from Tools_fct.General_tools import add_white_noise_list, add_white_noise_mat_complex
+from tqdm import tqdm
 
 def ShapeDescriptors_CGPT(CGPT):
     N1, N2 = CGPT2CCGPT(CGPT)
     ord = N1.shape[0]
     u = N2[0,1] / (2*N2[0,0])
-    J1, J2 = CCGPT_transform(N1, N2, -u, 1)
+    J1, J2 = CCGPT_transform(N1, N2, T0=-u, S0=1, Phi0=0.0)
     
     S1, S2 = np.zeros((ord, ord), dtype=np.complex128), np.zeros((ord, ord), dtype=np.complex128)
     I1, I2 = np.zeros((ord, ord), dtype=np.complex128), np.zeros((ord, ord), dtype=np.complex128)
     
     for m in range(ord):
         for n in range(ord):
-            S1[m,n] = J1[m,n] / np.sqrt(J2[m,m]*J2[n,n])
+            S1[m,n] = J1[m,n] / np.sqrt( J2[m,m]*J2[n,n] )
             S2[m,n] = J2[m,n] / np.sqrt(J2[m,m]*J2[n,n])
     
     I1 = np.abs(S1)
@@ -28,7 +29,7 @@ def ShapeDescriptors_CGPT(CGPT):
     
     return J1, J2, S1, S2, I1, I2
 
-def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=2, noise_level=0.0):
+def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=2, noise_level=0.0, verbose=True):
     """
     Computes the rigid motion invariants of the CGPTs of the dictionary elements
     Parameters:
@@ -47,6 +48,8 @@ def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=2, noise_level=0.0):
         The PDE used for the simulation
     ord: int
         Maximum order of the CGPTs
+    verbose: bool
+        If True, display progress bars
     Returns:
     ---------------
     I1: list of list
@@ -56,17 +59,17 @@ def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=2, noise_level=0.0):
         List of CGPT invariants for each shape in the dictionary and for each working frequency
         I2[n,m] is the invariant matrix of the nth shape in the dictionary at the mth working frequency
     """
-
     
     I1 = np.array([[np.zeros((ord, ord)) for _ in range(len(freq))] for _ in range(len(dict))], dtype=object)
     I2 = np.array([[np.zeros((ord, ord)) for _ in range(len(freq))] for _ in range(len(dict))], dtype=object)
     mu = []
     tau = np.array([[np.zeros((2,)) for _ in range(len(freq))] for _ in range(len(dict))], dtype=object)
     # Loop over the shapes in the dictionary
-    for i, shape in enumerate(dict):
+    shape_iter = tqdm(enumerate(dict), desc="Computing shapes", total=len(dict)) if verbose else enumerate(dict)
+    for i, shape in shape_iter:
         # Generate the conductivity instance
         if pde == 'conductivity':
-            P = Conductivity([shape], np.array([cnd[i]]), np.array([pmtt[i]]), cfg, drude=False)
+            P = Conductivity([shape], np.array([cnd[i]]), np.array([pmtt[i]]), cfg, drude=True)
             data, _ = P.data_simulation(freq)
             # Add noise to the data
             if noise_level > 0:
@@ -74,7 +77,8 @@ def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=2, noise_level=0.0):
             # Compute CGPTs
             rCGPT = P.reconstruct_CGPT(data, ord, method='lsqr')
             CGPT = rCGPT['CGPT']
-            for j in range(len(freq)):
+            freq_iter = tqdm(range(len(freq)), desc=f"Computing frequencies for shape {i+1}", leave=False) if verbose else range(len(freq))
+            for j in freq_iter:
                 #Compute the invariants for the jth frequency
                 _,_,_,_, I1_, I2_ = ShapeDescriptors_CGPT(CGPT[j])
                 I1[i][j] = I1_
@@ -84,28 +88,28 @@ def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=2, noise_level=0.0):
             # Compute data for the shape inclusion
             data = P.data_simulation(freq)
             
-            if ord >= 2 :
-                MSR = data['MSR']
+            if ord >= 2:
                 Current = data['Current']
-
+                MSR, _ = add_white_noise_list(data['MSR'], noise_level)
                 # Compute CGPTs
                 rCGPT = P.reconstruct_CGPT(MSR, Current, ord)
                 CGPT = rCGPT['CGPT']
-                for j in range(len(freq)):
+                freq_iter = tqdm(range(len(freq)), desc=f"Computing frequencies for shape {i+1}", leave=False) if verbose else range(len(freq))
+                for j in freq_iter:
                     #Compute the invariants for the jth frequency
                     _,_,_,_, I1_, I2_ = ShapeDescriptors_CGPT(CGPT[j])
                     I1[i][j] = I1_
-                    I2[i][j] = I2_
-                print(" Invariants computed! ")    
+                    I2[i][j] = I2_    
             else:
-                SFR = data['SFR']
                 Current_bg = data['Current_bg']
+                SFR, _ = add_white_noise_list(data['SFR'], noise_level)
                 #Compute PTs
                 p = P.reconstruct_PT(SFR, Current_bg)
                 PT = p['PT']
                 ti = np.empty(1)
-                for j in range(len(freq)):
-                    tau[i][j] = ShapeDescriptors_PT(PT[j]) #type: ignore
+                freq_iter = tqdm(range(len(freq)), desc=f"Computing frequencies for shape {i+1}", leave=False) if verbose else range(len(freq))
+                for j in freq_iter:
+                    tau[i][j] = ShapeDescriptors_PT(PT[j])
                     if j == 0:
                         ti = tau[i][j].reshape(2,1)
                     else:
@@ -114,7 +118,6 @@ def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=2, noise_level=0.0):
                     (np.max(ti[0,:]),
                     np.max(ti[1,:])) ).reshape(2,1)
                 mu.append(ti / tmax)
-                print('Ratio computed!')
     if ord >= 2:
         return I1, I2
     else:
@@ -138,7 +141,6 @@ def ShapeRecognition_ShapeInvariants(I1_dico, I2_dico, I1, I2):
     index: int
         The index of the shape in the dictionary that is closest to the shape
     """
-    ord = I1[0].shape[0]
     #Initialize the difference lists
     e = np.zeros((len(I1_dico)), dtype=np.complex128)
     #Compute the difference between the CGPT invariants of the shape and the figures in the dictionary
@@ -221,5 +223,4 @@ def ShapeRecognition_PT_freq(mu_dico, mu):
         d_sum = np.sum(d, axis=0)  # Sum along columns
         d_total[j] = np.sum(d_sum)  # Sum all elements
     shape_index = np.argmin(d_total)
-    print(d_total)
     return shape_index

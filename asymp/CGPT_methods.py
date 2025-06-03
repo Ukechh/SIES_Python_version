@@ -214,5 +214,5 @@ def CCGPT_transform(N1,N2,T0,S0,Phi0=0.0):
     w = np.exp(1j*Phi0)*S0
     Gw = np.diag([w**(m+1) for m in range(ord)])
     Z1 = Cz @ Gw @ N1 @ Gw @ Cz.T
-    Z2 = np.conj(Cz @ Gw) @ N2 @ Gw @ Cz.T
+    Z2 = np.conj(Cz) @ np.conj(Gw) @ N2 @ Gw @ Cz.T
     return Z1, Z2 

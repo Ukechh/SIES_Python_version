@@ -6,6 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 import numpy as np
 import matplotlib.pyplot as plt
 from figure.Geom_figures import Ellipse, Banana, Triangle, Rectangle
+from figure.ImageShape.Image_shape import ImgShape
 from figure.C2Boundary.C2Boundary import C2Bound
 from cfg.mconfig import Fish_circle
 from Operators.Operators import SingleLayer, LmKstarinv
@@ -23,7 +24,7 @@ c2 = np.array([1,-1])
 
 #Initialize inclusions:
 D = []
-B1 = Ellipse(delta,delta, NbPts=npts)
+B1 = ImgShape('Test_images/A.png', npts=npts)
 #D.append((B1*0.4+ 0.2*np.array([-1,1]).T) < -np.pi /34 )
 
 #B1 = Triangle(delta, np.pi / 7, npts=npts)
