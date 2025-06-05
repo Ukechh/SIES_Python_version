@@ -9,6 +9,7 @@ from PDE.Conductivity_R2.Conductivity import Conductivity
 from PDE.Electric_fish.Electric_fish_ import Electric_Fish
 from Tools_fct.General_tools import add_white_noise_list, add_white_noise_mat_complex
 from tqdm import tqdm
+from multiprocessing import Pool
 
 def ShapeDescriptors_CGPT(CGPT):
     N1, N2 = CGPT2CCGPT(CGPT)
@@ -56,7 +57,7 @@ def Compute_Invariants(dict, cfg, cnd, pmtt, freq, pde, ord=2, noise_level=0.0, 
         List of CGPT invariants for each shape in the dictionary and for each working frequency
         I1[n,m] is the invariant matrix of the nth shape in the dictionary at the mth working frequency
     I2: list of list
-        List of CGPT invariants for each shape in the dictionary and for each working frequency
+        List of CGPT invariants for each #type:ignoreshape in the dictionary and for each working frequency
         I2[n,m] is the invariant matrix of the nth shape in the dictionary at the mth working frequency
     """
     
