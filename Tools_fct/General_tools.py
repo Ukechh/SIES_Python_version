@@ -29,8 +29,8 @@ def cart2pol(x):
 def add_white_noise_mat(X, nlvl):
     W = np.random.normal(size=X.shape)
     m,n = X.shape
-    Y = X + W * nlvl* np.linalg.norm(X,'fro') / np.sqrt(m*n)
-    sigma = np.linalg.norm(X,'fro') * nlvl / np.sqrt(m*n)
+    Y = X + W * nlvl * (np.max(X)-np.min(X))
+    sigma = np.sqrt((np.max(X)-np.min(X))*nlvl)
     
     return Y, sigma
 
@@ -38,10 +38,10 @@ def add_white_noise_mat_complex(X, nlvl):
     W = np.random.normal(size=X.shape)
     V = np.random.normal(size=X.shape)
     
-    epsilon = np.mean(abs(X))*nlvl
-    
-    Y = X + (W + 1j*V) * epsilon
-
+    epsilonr = (np.max(X.real) - np.min(X.real))*nlvl
+    epsiloni = (np.max(X.imag)- np.min(X.imag))*nlvl
+    Y = X + (W*epsilonr + 1j*V*epsiloni)
+    epsilon = np.array([epsilonr, epsiloni])
     return Y, epsilon
 
 def add_white_noise_list(data, nlvl):

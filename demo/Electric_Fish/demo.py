@@ -24,7 +24,7 @@ c2 = np.array([1,-1])
 
 #Initialize inclusions:
 D = []
-B1 = ImgShape('Test_images/A.png', npts=npts)
+B1 = Triangle(delta, np.pi/3, npts=npts)
 #D.append((B1*0.4+ 0.2*np.array([-1,1]).T) < -np.pi /34 )
 
 #B1 = Triangle(delta, np.pi / 7, npts=npts)
@@ -35,7 +35,7 @@ D.append(B1*0.3)
 #Conductivity and permittivity values for
 #One inclusion
 cnd = np.array([100])
-pmtt = np.array([40])
+pmtt = np.array([0.1])
 
 #Two inclusions
 #cnd = np.array([10, 4])
@@ -50,7 +50,7 @@ mcenter = np.zeros(2)
 mradius = D[0].diameter * 3
 
 #Initialize fish body
-Omega = Ellipse(delta/2, delta/4, 0, 2**9)
+Omega = Ellipse(delta/2, delta/8, 0, 2**9)
 Omega = Omega< np.pi/2
 
 #Set skin impedance
@@ -59,15 +59,19 @@ impd = 1
 #Give indices of active receptors
 idxRcv = np.arange(0, Omega.nb_points-1,2**5)
 Ns = 8
-cfg = Fish_circle(Omega, idxRcv, mcenter, mradius, Ns, 2*np.pi, impd=impd)
+cfg = Fish_circle(Omega, idxRcv, mcenter, mradius, Ns, 2*np.pi, impd=impd, d0= [0,-1/2])
 
 stepBEM = 4
 
 P = Electric_Fish(D, cnd, pmtt, cfg, stepBEM)
-ax = plt.subplot()
-
+fig, ax = plt.subplots(figsize=[8,6])
 #PLot the fish positions and inclusions
 P.plot(ax=ax)
+ax.margins(0.6,0.4)
+plt.xlim(-1,1)
+plt.ylim(-1,1)
+plt.grid()
+plt.axis('equal')
 plt.show()
 
 #We start a list of working frequencies
@@ -83,16 +87,20 @@ fphi = data['fphi']
 
 print('Verify that the solution of the forward system (functions phi and psi) have zero-mean:')
 print(f"psi norm: {np.abs(np.sum(Omega.sigma * fpsi[0][:,0]))}")  
-print(f"phi norm: {np.abs(np.sum(D[0].sigma * fphi[0][:,0,0]))}")
+print(f"phi norm: {np.abs(np.sum(D[0].sigma * fphi[0][:,0,0]))}") 
 
 #Plot field
-sidx = 1  # source index to be calculated
+sidx = 0  # source index to be calculated
 fidx = 0  # frequency index to be calculated
-F, F_bg, SX, SY, mask = P.calculate_field(fidx, sidx, np.array([0,0]), 5, 100, fpsi_bg, fpsi, fphi)
-P.plot_field(sidx, F, F_bg, SX, SY, 100, False, color='k', linewidth=1.4)
+field = P.calculate_field(fidx, sidx, np.array([0,0]), 5, 100, fpsi_bg, fpsi, fphi)
+F = field['F']
+F_bg = field['F_bg']
+SX = field['Sx']
+SY = field['Sy']
+P.plot_field(sidx, F, F_bg, SX, SY, 100, True, color='k', linewidth=1.4)
 plt.show()
 
-##CGPT RECONSTRUCTION
+""" ##CGPT RECONSTRUCTION
 
 # Compute theoretical CGPT
 ord = 2  # maximum order of reconstruction
@@ -102,8 +110,8 @@ fidx = 0  # frequency index to be reconstructed
 CGPTD = []
 for f in range(len(freq)):
     lambda_val = lbda(cnd, pmtt, freq[f])
-    CGPTD.append(theoretical_CGPT(D, lambda_val, ord))
-
+    CGPTD.append(theoretical_CGPT(D, lambda_val, ord))  """
+"""
 #We work with noiseless data:
 MSR = data['MSR']
 Current = data['Current']
@@ -122,3 +130,32 @@ print(CGPT[fidx])  # reconstruction
 
 print('\nRelative error:')
 print(np.linalg.norm(CGPT[fidx] - CGPTD[fidx], 'fro') / np.linalg.norm(CGPTD[fidx], 'fro'))  # relative error
+ """
+def drude(cnd, tau, fundfreq, NbPts):
+    """
+    Computes the real and imaginary parts of complex conductivity using Drude model
+    """
+    freq = np.arange(0, NbPts) * fundfreq
+    compcnd = cnd / (1 - 1j * freq * tau)
+    rcnd = np.real(compcnd)
+    icnd = np.imag(compcnd)
+    return rcnd, icnd
+""" cnd = 1000
+tau = 0.1
+fundfreq = np.pi / 10
+NbPts = 100
+rcnd, icnd = drude(cnd, tau, fundfreq, NbPts)
+
+plt.figure(figsize=(10,5))
+plt.plot(np.arange(0,NbPts), rcnd, label='Real part ', color = 'red')
+plt.plot(np.arange(0,NbPts), icnd, label='Imaginary part', color = 'blue')
+plt.axhline(0, color='black', linestyle='--', linewidth=0.5)
+plt.axvline(0, color='black', linestyle='--', linewidth=0.5)
+plt.xlim(0, NbPts)
+plt.ylim(0, 1.1*cnd)
+plt.title('Drude conductivity model')
+plt.legend()
+plt.grid()
+plt.xlabel('Frequency multiples $ f = y \cdot \omega_0 $ ')
+plt.ylabel('Value of conductivity')
+plt.show() """

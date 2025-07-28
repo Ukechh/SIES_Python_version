@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from figure.Geom_figures import Ellipse, Triangle, Rectangle, Flower
 from PDE.Conductivity_R2.Conductivity import Conductivity
 from cfg import mconfig
-from dict.CGPT.Invariant_descriptors import Compute_Invariants, ShapeRecognition_CGPT_frequency, ShapeRecognition_CGPT_majority_voting_frequency
+from dict.CGPT.Invariant_descriptors import Compute_Invariants_conductivity, ShapeRecognition_CGPT_frequency, ShapeRecognition_CGPT_majority_voting_frequency
 
 
 #Set up the number of points
@@ -33,7 +33,7 @@ freq = np.linspace(0.01, 3*np.pi, endpoint=False, num=10)
 #Set up an acquisition system
 cfg = mconfig.Coincided( np.array([-1,1]), 1, 20, np.array([1.0, 2*np.pi, 2*np.pi]))
 #Compute the invariants of the Dictionary shapes
-I1, I2 = Compute_Invariants(D, cfg, cnd, pmtt,freq,'conductivity',ord=2)
+I1, I2 = Compute_Invariants_conductivity(D, cfg, cnd, pmtt, freq, ord=2) 
 
 #Define a true index for the shape:
 true_index = 1
@@ -49,7 +49,7 @@ cnd_new = 10*np.array([1])
 pmtt_new = 5*np.array([1])
 
 #Compute the invariants of the new shape
-I1_new, I2_new = Compute_Invariants([Bnew], cfg, cnd_new, pmtt_new, freq, pde='conductivity', ord=2, noise_level=0.0)
+I1_new, I2_new = Compute_Invariants_conductivity([Bnew], cfg, cnd_new, pmtt_new, freq, ord=2, noise_level=0.0)
 # Recognize the shape
 index, errors = ShapeRecognition_CGPT_frequency(I1, I2, I1_new, I2_new)
 #Print the found results
@@ -85,7 +85,7 @@ for noise in noise_levels:
     # Perform multiple trials for each noise level
     for _ in range(trials_per_noise):
         # Compute the invariants of the new shape with current noise level
-        I1_new, I2_new = Compute_Invariants([Bnew], cfg, cnd_new, pmtt_new, freq,'conductivity' ,ord=2, noise_level=noise)
+        I1_new, I2_new = Compute_Invariants_conductivity([Bnew], cfg, cnd_new, pmtt_new, freq,ord=2, noise_level=noise)
         
         # Recognize the shape
         index, error = ShapeRecognition_CGPT_frequency(I1, I2, I1_new, I2_new)

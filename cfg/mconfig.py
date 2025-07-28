@@ -248,7 +248,7 @@ class Fish_circle(mconfig):
     Omega0 : C2Bound
 
 
-    def __init__(self, Omega, idxRcv, Z, Rs, Ns, aov, eorgan0=None, dipole0=None, d0 = np.zeros(2), impd = None):
+    def __init__(self, Omega, idxRcv, Z, Rs, Ns, aov, eorgan0=None, dipole0=None, d0 = None, impd = None):
         """Initialize measurement configuration for electric fish simulation.
         Parameters
         ----------
@@ -287,6 +287,9 @@ class Fish_circle(mconfig):
             raise ValueError("Type Error, the domain must be a C2Boundary")
         
         self.Omega0 = Omega
+        if d0 is None:
+            d0 = np.array([0.0, 0.0])
+
         if impd is None:
             self.impd = 0.0
         else:
@@ -334,7 +337,7 @@ class Fish_circle(mconfig):
             
             rot = np.array([[np.cos(theta) , - np.sin(theta)], [np.sin(theta), np.cos(theta)]])
             Ob = rot @ self.dipole0
-            Sr = self.fpos[:,i].reshape(-1,1) + rot @self.eorgan0
+            Sr = self.fpos[:,i].reshape(-1,1) + rot @ self.eorgan0
             self.dipole_prv.append(Ob) #Direction of the s-th dipole
             self._src.append(Sr) # Position of the s-th electric organ         
 

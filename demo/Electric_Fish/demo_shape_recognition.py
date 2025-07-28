@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from figure.Geom_figures import Ellipse, Triangle, Rectangle, Flower
 from PDE.Conductivity_R2.Conductivity import Conductivity
 from cfg import mconfig
-from dict.CGPT.Invariant_descriptors import Compute_Invariants, ShapeRecognition_CGPT_frequency, ShapeRecognition_CGPT_majority_voting_frequency, ShapeRecognition_PT_freq
+from dict.CGPT.Invariant_descriptors import Compute_Invariants_fish, ShapeRecognition_CGPT_frequency, ShapeRecognition_CGPT_majority_voting_frequency, ShapeRecognition_PT_freq
 from figure.ImageShape.Image_shape import ImgShape
 
 #Set up the number of points
@@ -71,10 +71,10 @@ plt.show()
 
 #Compute Invariants for the dictionary shapes
 
-tau, mu = Compute_Invariants(D, cfg, cnd, pmtt, freq, 'fish', ord=1) #type : ignore
+tau, mu = Compute_Invariants_fish(D, cfg, cnd, pmtt, freq, ord=1) #type : ignore
 
 
-I1, I2 = Compute_Invariants(D, cfg, cnd, pmtt, freq, 'fish', ord=2) 
+I1, I2 = Compute_Invariants_fish(D, cfg, cnd, pmtt, freq, ord=2) 
 
 
 #Define new conductivity and permitivitty values
@@ -84,9 +84,9 @@ pmtt_new = 5*np.array([1])
 
 
 #Compute the invariants of the new shape
-tau_new, mu_new = Compute_Invariants([Bnew], cfg, cnd_new, pmtt_new, freq, 'fish', ord=1, noise_level=0.0)
+tau_new, mu_new = Compute_Invariants_fish([Bnew], cfg, cnd_new, pmtt_new, freq, ord=1, noise_level=0.0)
 
-I1_new, I2_new =  Compute_Invariants([Bnew], cfg, cnd_new, pmtt_new, freq, 'fish', ord=2, noise_level=0.0)
+I1_new, I2_new =  Compute_Invariants_fish([Bnew], cfg, cnd_new, pmtt_new, freq, ord=2, noise_level=0.0)
 
 # Recognize the shape
 index_higher_order, error = ShapeRecognition_CGPT_frequency(I1, I2, I1_new, I2_new)

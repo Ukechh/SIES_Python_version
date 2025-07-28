@@ -42,15 +42,15 @@ def SXR_op_list(X,S,R, transp_flag):
 
     if transp_flag:
         Z = X.reshape(Ns, Nr)
-        W = np.zeros((Ns, Mr), dtype=X.dtype)
+        W = np.zeros((Ns, Mr), dtype=complex)
         for s in range(Ns):
             W[s, :] = Z[s, :] @ R[s]
         Y = S.conj().T @ W 
     else:
         Xm = X.reshape(Ms, Mr)
-        Y = np.zeros((Ns, Nr), dtype=X.dtype)
+        Y = np.zeros((Ns, Nr), dtype=complex)
         for s in range(Ns):
-            Y[s, :] = S[s, :] @ Xm @ R[s].conj().T
+            Y[s, :] = (S[s, :] @ Xm @ R[s].conj().T).astype(complex)
     return Y.ravel(order='F')
 
 def SXR_op_symm_list(X,S,R,transp_flag):
@@ -63,8 +63,8 @@ def SXR_op_symm_list(X,S,R,transp_flag):
     if transp_flag:
         Z = X.reshape(Ns, Nr)
         Zt = Z.T
-        W1 = np.zeros((Ns, Mr), dtype=X.dtype)
-        W2 = np.zeros((Mr, Ns), dtype=X.dtype)
+        W1 = np.zeros((Ns, Mr), dtype=complex)
+        W2 = np.zeros((Mr, Ns), dtype=complex)
         for s in range(Ns):
             W1[s, :] = Z[s, :] @ R[s]
             W2[:, s] = R[s].T @ Zt[:, s]

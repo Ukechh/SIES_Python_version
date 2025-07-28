@@ -678,7 +678,7 @@ class dDLdn(Operator):
         sigma_diag = sparse.diags(self.D1.sigma, format='csr')
         Smat = SingleLayer.make_kernel_matrix(self.D1.points, self.D1.sigma)
 
-        return self.Phi_t @ sigma_diag @ (Smat @ self.Psi)
+        return self.Phi_t @ sigma_diag @ (Smat @ self.Psi) #type: ignore
     
     @staticmethod
     def make_kernel_matrix(D, normal_D, sigma_D, E, normal_E) -> sparse.spmatrix:

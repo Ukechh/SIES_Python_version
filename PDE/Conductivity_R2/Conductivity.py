@@ -7,14 +7,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '/../../
 from scipy.sparse.linalg import lsqr, LinearOperator
 import numpy as np
 import matplotlib.pyplot as plt
-import warnings
-import math
-import copy
 from PDE.SmallInclusion import SmallInclusion
 from cfg import mconfig
 from FundamentalSols import green
 from Operators.Operators import SingleLayer, LmKstarinv
-from asymp.CGPT_methods import lbda, make_system_matrix_fast, make_system_matrix, make_block_matrix
+from asymp.CGPT_methods import lbda, make_system_matrix_fast, make_block_matrix
 from PDE.Conductivity_R2.make_CGPT import make_linop_CGPT
 
 

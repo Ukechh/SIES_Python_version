@@ -39,7 +39,6 @@ def lbda(cnd, pmtt = np.array([]), freq=np.array([]), drude= False, tau = 1.0):
         raise ValueError("Frequency must be a positive scalar")  
     if np.any((cnd==1) | (cnd< 0)):
         raise ValueError('Invalid value of conductivity')
-    
     if drude:
         cnd = cnd * (1 / (1 + 1j * freq * tau) )
     
@@ -159,7 +158,7 @@ def theoretical_CGPT_fast(D, KsdS, lam, ord):
     for m in range(ord):
         B = np.zeros((npts, nbIncl), dtype=np.complex128)
         for i in range(nbIncl):
-            dm = m * (D[i].cpoints)**(m-1)
+            dm = (m+1) * (D[i].cpoints)**(m)
             toto = D[i].normal[0,:] * dm + D[i].normal[1,:] * dm * 1j;
             B[:, i] = toto.ravel()
             
@@ -175,9 +174,9 @@ def theoretical_CGPT_fast(D, KsdS, lam, ord):
             iphi = toto.reshape(npts, nbIncl)
             for n in range(ord):
                 for i in range(nbIncl):
-                    zn = D[i].cpoints ** n * D[i].sigma
+                    zn = (D[i].cpoints ** n) * D[i].sigma
                     CC[m,n] = CC[m,n] + zn.real @ rphi[:,i]
-                    CS[m,n] = CS[m,n] + zn.imag @rphi[:,i]
+                    CS[m,n] = CS[m,n] + zn.imag @ rphi[:,i]
                     SC[m,n] = SC[m,n] + zn.real @ iphi[:,i]
                     SS[m,n] = SS[m,n] + zn.imag @ iphi[:,i]
     M = np.block([[CC, CS],[SC, SS]])
@@ -215,4 +214,6 @@ def CCGPT_transform(N1,N2,T0,S0,Phi0=0.0):
     Gw = np.diag([w**(m+1) for m in range(ord)])
     Z1 = Cz @ Gw @ N1 @ Gw @ Cz.T
     Z2 = np.conj(Cz) @ np.conj(Gw) @ N2 @ Gw @ Cz.T
-    return Z1, Z2 
+    return Z1, Z2
+
+""" def theoretical_CGPT_list(D, freq, KsdS): """

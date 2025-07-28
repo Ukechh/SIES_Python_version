@@ -7,14 +7,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 import numpy as np
 import warnings
 import math
-import copy
+
 #Plot packages
 from matplotlib.ticker import MaxNLocator 
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
 from matplotlib import colormaps
 #Utility classes and functions
-from scipy.sparse.linalg import LinearOperator, lsqr
+from scipy.sparse.linalg import LinearOperator
+from scipy.optimize import least_squares
+from scipy.linalg import lstsq as lsqr
 from Tools_fct.BEM_tools import P1_basis, interpolation 
 from PDE.SmallInclusion import SmallInclusion
 from cfg.mconfig import Fish_circle
@@ -27,7 +28,7 @@ from Tools_fct.linsys import SXR_op_symm_list, SXR_op_list
 
 class Electric_Fish(SmallInclusion):
 
-    def __init__(self, D, cnd, pmtt, cfg : Fish_circle, stepBEM):
+    def __init__(self, D, cnd, pmtt, cfg : Fish_circle, stepBEM, drude=True):
         """  Constructor of the Electric_Fish class.
         This class represents an electric fish with small exterior inclusions and handles
         the boundary element method (BEM) calculations for both the fish body and inclusions.
@@ -60,9 +61,9 @@ class Electric_Fish(SmallInclusion):
 
         if not isinstance(cfg, Fish_circle):
             raise ValueError('The acquisition configuration must be an object of Fish_circle')
-        
-        self.Omega = copy.deepcopy(cfg.Omega0)
-        self.impd = copy.deepcopy(cfg.impd)
+        self.drude = drude
+        self.Omega = cfg.Omega0
+        self.impd = cfg.impd
         self.cnd, self.pmtt = cnd, pmtt
         
         self.typeBEM1 = 'P1' #Type of boundary elements for fish body
@@ -76,11 +77,12 @@ class Electric_Fish(SmallInclusion):
         
         #P1 elements for the body
         self.Psi = P1_basis(self.Omega.nb_points, self.stepBEM1) #Psi is of shape (nb_pts, nb_points/ stepBEM1)
-        if self.check_intersections():
-            raise ValueError('Inclusions must not intersect the fish\'s body')
         
-        self.KsdS = make_block_matrix(self._D) 
-        self.dHdn = self.compute_dHdn()
+        self.KsdS = make_block_matrix(self._D)
+        if len(D) != 0:
+             self.dHdn = self.compute_dHdn()
+        else:
+            self.dHdn = np.zeros((self.stepBEM1 + self.stepBEM2, self._cfg._Ns_total), dtype= np.complex128)
 
     def check_intersections(self):
         """
@@ -134,7 +136,7 @@ class Electric_Fish(SmallInclusion):
             for i in range(self._nbIncl):
                 H2[idx:idx+self.nbBEM2, s] = Electric_Fish.source_vector(self._D[i], src, dipole)
                 idx+=self.nbBEM2
-        return np.vstack((H1,H2))
+        return np.vstack((H1,H2), dtype=np.complex128)
 
     def plot(self, idx=None, ax=None, **kwargs):
         if ax is None:
@@ -143,9 +145,7 @@ class Electric_Fish(SmallInclusion):
         for n in range(self._nbIncl):
             self._D[n].plot(ax=ax, **kwargs)
 
-        if idx is None:
-            idx = []
-        self._cfg.plot(ax=ax, **kwargs)
+        self._cfg.plot(ax=ax, idx=idx,  **kwargs)
 
     def calculate_field(self, f, s, z0, width, N, fpsi_bg, fpsi, fphi):
         """
@@ -211,16 +211,25 @@ class Electric_Fish(SmallInclusion):
         for i in range(self._nbIncl):
          #contribution of the i^th inclusion 
             V += SingleLayer.eval(self._D[i], fphi[:,i], Z)
+        
         F = np.reshape(V, (N,N))
+        
         #BACKGROUND FIELD
         Ss = SingleLayer.eval(Omega, fpsi_bg, Z)
         Ds = DoubleLayer.eval(Omega, fpsi_bg, Z)
     
         V = Hs + Ss - self.impd * Ds
         F_bg = np.reshape(V, (N,N))
-        
-        return F, F_bg, Sx, Sy, mask
-     
+        results = {
+            'F' : F,
+            'F_bg' : F_bg,
+            'Sx' : Sx,
+            'Sy' : Sy,
+            'mask' : mask
+
+        }
+        return results
+    
     def data_simulation(self, f):
         """
         Simulates the data of electric fish.
@@ -272,144 +281,112 @@ class Electric_Fish(SmallInclusion):
         """
         if not isinstance(self._cfg, Fish_circle):
             raise ValueError('The cfg must be an instance of Fish_circle')
-        ###Solve forward pb for all positions:
-        
+            
         if isinstance(f, (int, float)):
             f = np.array([f])
-        
-        #Solution matrix of problem, frequency dependent
+
+        # Initialize known variables
         SF = np.zeros((self.nbBEM1 + self._nbIncl*self.nbBEM2, len(f), self._cfg._Ns_total), dtype=np.complex128)
-        
-        #Solution matrix of background problem
         SU = np.zeros((self.nbBEM1, self._cfg._Ns_total), dtype=np.complex128)
+        PP = np.zeros((self.nbBEM1, len(f), self._cfg._Ns_total), dtype=np.complex128)
         
-        #Post Processing
-        PP = np.zeros((self.nbBEM1, len(f), self._cfg._Ns_total), dtype= np.complex128)
-
-        #Gram matrix as complex:
-        Gram = self.Grammatrix.astype(complex)
-
-        #Psi and Phi integrals:
+        # Convert to complex
+        Gram = self.Grammatrix
         Psi_int = self.Psi.conj().T @ self.Omega.sigma
         
-        Phi_int = np.zeros((self.nbBEM2, self._nbIncl))
+        # Optimize Phi_int calculation
+        Phi_int = np.array([d.sigma for d in self._D]).T
+
+        Psi_row = Psi_int.reshape(1, -1)
+        Phi_row = Phi_int.reshape(1,-1)
+        zeros_row1 = np.zeros((1, self.nbBEM2 * self._nbIncl), dtype= np.complex128)
+        zeros_row2 = np.zeros((1, self.nbBEM1), dtype= np.complex128)
+        # Main loop for different fish positions
+        matrix_D_list = [make_system_matrix_fast(self.KsdS, lbda(self.cnd, self.pmtt, f[n], drude=self.drude))[0] for n in range(len(f))]
         
-        for i in range(self._nbIncl):
-            Phi_int[:,i] = self._D[i].sigma #Boundary integral of P0 elements
-
-        """
-        The first for loop is on the fish's position (different Omega), because it is more expensive to
-        build the block matrices depending on Omega (A, B, C). Remark that both the system matrix and the
-        right hand vector are Omega-dependent.
-        """
-
         for s in range(self._cfg._Ns_total):
             Omega = self._cfg.Bodies(s)
 
+            # Build system matrices
             matrix_A = Electric_Fish.system_matrix_block_A(Omega, self.typeBEM1, self.stepBEM1, self.impd)
-            matrix_B = Electric_Fish.system_matrix_block_B(Omega, self.typeBEM1, self.stepBEM1, self._D, self.typeBEM2, self.stepBEM2)
-            matrix_C = Electric_Fish.system_matrix_block_C(Omega, self.typeBEM1, self.stepBEM1, self._D, self.typeBEM2, self.stepBEM2, self.impd) 
-            
-            #Resolution of background system:
-            matrix_BEM = np.vstack([matrix_A, Psi_int.reshape(1, -1)])
+            matrix_B = Electric_Fish.system_matrix_block_B(Omega, self.typeBEM1, self.stepBEM1, self._D, self.typeBEM2, self.stepBEM2) 
+            matrix_C = Electric_Fish.system_matrix_block_C(Omega, self.typeBEM1, self.stepBEM1, self._D, self.typeBEM2, self.stepBEM2, self.impd)
+
+            # Background system resolution
+            matrix_BEM = np.vstack([matrix_A, Psi_row])
             rhs = np.append(self.dHdn[:self.nbBEM1, s], 0)
-            row, _, _, _ = np.linalg.lstsq(matrix_BEM, rhs) 
-            SU[:, s] = row #Here matrix BEM is of shape (n+1, n) and rhs has shape (n+1,)
-            
-            for n in range(len(f)):
-                lam = lbda(self.cnd, self.pmtt, f[n], drude=True)
-                matrix_D, _ = make_system_matrix_fast(self.KsdS, lam)
-
-                top = np.hstack((matrix_A, matrix_B)).astype(np.complex128)
-                middle = np.hstack((matrix_C, matrix_D)).astype(np.complex128)
-                row1 = np.hstack((Psi_int.reshape(1, -1), np.zeros((1, self.nbBEM2 * self._nbIncl)))).astype(np.complex128)
-                row2 = np.hstack((np.zeros((1, self.nbBEM1)), Phi_int.reshape(1, -1))).astype(np.complex128)
-                
-                matrix_BEM = np.vstack((top, middle, row1, row2)).astype(np.complex128)
-
-                rhs = np.concatenate([self.dHdn[:, s], [0, 0]]).astype(np.complex128)
-
-                upd, _, _, _ = np.linalg.lstsq(matrix_BEM, rhs)
+            row, _, _, _= lsqr(matrix_BEM, rhs, lapack_driver='gelsy') #type: ignore
+            SU[:, s] = row
+            # Frequency dependent calculations
+     
+            # rhs is independent of frequency 
+            rhs1 = np.concatenate([self.dHdn[:, s], [0, 0]])
+            for n, matrix_D in enumerate(matrix_D_list):
+                # Build combined system matrix efficiently
+                matrix_BEM = np.vstack((
+                    np.hstack((matrix_A, matrix_B)),
+                    np.hstack((matrix_C, matrix_D)),
+                    np.hstack((Psi_row, zeros_row1)),
+                    np.hstack((zeros_row2, Phi_row))
+                ))
+               
+                upd, _, _, _ = lsqr(matrix_BEM, rhs1, lapack_driver='gelsy') #type: ignore
                 SF[:, n, s] = upd
                 
-                rhs = matrix_B @ SF[self.nbBEM1:, n, s]
-                PP[:, n, s] = -np.linalg.solve(Gram, rhs)
+                rhsn = matrix_B @ SF[self.nbBEM1:, n, s]
+                PP[:, n, s] = -np.linalg.solve(Gram, rhsn)
 
+        # Post-processing
         vpsi_bg = SU
         fpsi_bg = interpolation(self.Psi, SU)
         
-        vpsi = []
-        fpsi = []
+        vpsi = [SF[:self.nbBEM1, m, :] for m in range(len(f))]
+        fpsi = [interpolation(self.Psi, v) for v in vpsi]
+
+        # Initialize vphi and MSR directly with list comprehensions
+        vphi = [[SF[self.nbBEM1+j*self.nbBEM2:self.nbBEM1+(j+1)*self.nbBEM2, m, :] 
+             for j in range(self._nbIncl)] for m in range(len(f))]
+             
+        fphi = [np.stack([v[j] for j in range(self._nbIncl)], axis=2) for m, v in enumerate(vphi)]
         
-        vphi = [[np.array([]) for _ in range(self._nbIncl)] for _ in range(len(f))]
-        fphi = []
+        fpp = [interpolation(self.Psi, PP[:,m,:]) for m in range(len(f))]
         
-        fpp = []
+        # Calculate MSR more efficiently
         MSR = []
-        
         for m in range(len(f)):
-            sol = np.squeeze(SF[:, m, :])
-            vpsi.append(sol[:self.nbBEM1, :])
-
-            fpsi.append(interpolation(self.Psi, vpsi[m]))
-
-            idx = self.nbBEM1
-            fphi.append(np.zeros((self.nbBEM2, self._cfg._Ns_total, self._nbIncl), dtype=np.complex128))
-            
+            msr = np.zeros((self._cfg._Ns_total, self._cfg._Nr), dtype=np.complex128)
             for j in range(self._nbIncl):
-                vphi[m][j] = sol[idx:idx+self.nbBEM2 , :]
-                idx += self.nbBEM2
-                fphi[m][:,:,j] = vphi[m][j]
-            
-            vpp = np.squeeze(PP[:,m,:])
-            fpp.append(interpolation(self.Psi, vpp))
-            
-            MSR.append(np.zeros((self._cfg._Ns_total, self._cfg._Nr), dtype= np.complex128))
-            
-            for j in range(self._nbIncl):
-                toto = np.zeros((self._cfg._Ns_total, self._cfg._Nr), dtype=np.complex128)
                 for s in range(self._cfg._Ns_total):
                     rcv = self._cfg.rcv(s)
-                    toto[s,:] = SingleLayer.eval(self._D[j], vphi[m][j][:,s], rcv)
-                MSR[m] += toto
-        
-        Current_bg = fpsi_bg.T
-        Current = []
-        SFR = []
-        PP_SFR = []
-        for n in range(len(f)):
-            Curr = fpsi[n].T
-            sfr = Curr - Current_bg
-            pp_sfr = fpp[n].T
+                    msr[s,:] += SingleLayer.eval(self._D[j], vphi[m][j][:,s], rcv)
+            MSR.append(msr)
 
-            Current.append(Curr[:, self._cfg.idxRcv])
-            SFR.append(sfr[:,self._cfg.idxRcv])
-            PP_SFR.append(pp_sfr[:,self._cfg.idxRcv])
+        # Final post-processing
+        Current_bg = fpsi_bg.T[:,self._cfg.idxRcv]
+        Current = [fpsi[n].T[:,self._cfg.idxRcv] for n in range(len(f))]
+        SFR = [(Current[n] - Current_bg) for n in range(len(f))]
+        PP_SFR = [fpp[n].T[:,self._cfg.idxRcv] for n in range(len(f))]
 
-        Current_bg = Current_bg[:,self._cfg.idxRcv]
-        # Create dictionary with labeled outputs
-        result = {
+        return {
             'frequencies': f,
             'vpsi': vpsi,
-            'vphi': vphi, 
-            'fpsi': fpsi,
+            'vphi': vphi,
+            'fpsi': fpsi, 
             'fphi': fphi,
             'vpsi_bg': vpsi_bg,
             'fpsi_bg': fpsi_bg,
             'fpp': fpp,
             'Current': Current,
             'Current_bg': Current_bg,
-            'MSR': MSR,
+            'MSR': MSR,  
             'SFR': SFR,
             'PP_SFR': PP_SFR
         }
 
-        return result 
-
     def plot_field(self, s, F, F_bg, SX, SY, nbLine, subfig, *args, **kwargs):
         if not isinstance(self._cfg, Fish_circle):
             raise ValueError('The cfg must be an instance of Fish_circle')
-        def create_plot(ax, data, title, add_colorbar=True, custom_cmap=None):
+        def create_plot(ax, data, title, inclusions=True, add_colorbar=True, custom_cmap=None):
             if not isinstance(self._cfg, Fish_circle):
                 raise ValueError('The cfg must be an instance of Fish_circle')
             # Determine appropriate contour levels for better visualization
@@ -435,8 +412,9 @@ class Electric_Fish(SmallInclusion):
             ax.contour(SX, SY, data, nbLine, colors='black', linewidths=0.5, alpha=0.5)
                 
             # Plot inclusions
-            for n in range(self._nbIncl):
-                self._D[n].plot(ax=ax, **kwargs)
+            if inclusions:
+                for n in range(self._nbIncl):
+                    self._D[n].plot(ax=ax, **kwargs)
                 
             # Plot main body (Omega)
             self._cfg.Bodies(s).plot(ax=ax, **kwargs)
@@ -461,8 +439,8 @@ class Electric_Fish(SmallInclusion):
                 cbar = plt.colorbar(contour, ax=ax, shrink=0.9)
                 cbar.set_alpha(1)
                 cbar.ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
-            ax.plot(grid_center_x, grid_center_y, 'x', color ='r')
-            ax.plot(src[0], src[1], 'x', color= 'k')
+            #ax.plot(grid_center_x, grid_center_y, 'x', color ='r')
+            #ax.plot(src[0], src[1], 'x', color= 'k')
             return contour
         
         if subfig:
@@ -470,7 +448,7 @@ class Electric_Fish(SmallInclusion):
             fig, axs = plt.subplots(2, 2, figsize=(15, 12),
                                 gridspec_kw={'hspace': 0.2, 'wspace': 0.2})
             fig.suptitle('Potential Field Analysis', y=0.98, fontsize=14, fontweight='bold')
-            
+            diff = F - F_bg
             # Plot 1: Real part of F
             contour1 = create_plot(axs[0, 0], np.real(F), 'Potential field u, real part')
             
@@ -478,11 +456,11 @@ class Electric_Fish(SmallInclusion):
             contour2 = create_plot(axs[0, 1], np.imag(F), 'Potential field u, imaginary part')
             
             # Plot 3: Real part of perturbation
-            diff = np.real(F - F_bg)
-            contour3 = create_plot(axs[1, 0], diff, 'Perturbed field u-U, real part')  # Diverging colormap for difference
+            R = np.real(diff)
+            contour3 = create_plot(axs[1, 0], R, 'Perturbed field u-U, real part')  # Diverging colormap for difference
             
             # Plot 4: Background field with contours
-            contour4 = create_plot(axs[1, 1], F_bg, 'Background potential field U')
+            contour4 = create_plot(axs[1, 1], F_bg, inclusions=False, title= 'Background potential field U')
             
             # Apply consistent formatting to all subplots with proper axes labels
             for ax in axs.flat:
@@ -494,18 +472,18 @@ class Electric_Fish(SmallInclusion):
             fig, ax = plt.subplots(figsize=(10, 8))
             contour = create_plot(ax, np.real(F-F_bg), 'Perturbed field u-U, real part')
             ax.set_xlabel('x', fontsize=10)
-            ax.set_ylabel('y', fontsize=10)
-            
+            ax.set_ylabel('y', fontsize=10)    
         plt.tight_layout()
         
         return fig
     
-    def reconstruct_CGPT(self, MSR, Current, ord, maxiter=10**5, tol=1e-5, symmode=0):
+    def reconstruct_CGPT(self, MSR, Current, ord, max_iter=1e5, tol=1e-3, symmode=0):
         CGPT_block = []
         res = []
         rres = []
+        Q_list = []
         for t in range(len(MSR)):
-            #Current varies with freuency so we make a new linear operator for each frequency
+            #Current varies with frequency so we make a new linear operator for each frequency
             op = Electric_Fish.make_linop_CGPT(self._cfg, Current[t], self.impd, ord, symmode)
             L = op['L']
             As = op['As']
@@ -521,13 +499,14 @@ class Electric_Fish(SmallInclusion):
             else: 
                 nr, _ = Ar[0].shape  # type: ignore
             
-           
             L_op = LinearOperator(shape= (nr*ns, 4*ord*ord), dtype=np.complex128, matvec= mv, rmatvec = rv) # type: ignore
+            Q = L_op.matmat(np.eye(L_op.shape[1]))
             
             toto = MSR[t].reshape(-1,1)
             if toto.shape == (1,1):
                 toto = toto.reshape(1)
-            X, _, _, r1norm, _, _, _, _, _, _= lsqr(L_op, toto, atol=tol, btol=tol, iter_lim=maxiter)
+            #X, _, _, r1norm, _, _, _, _, _, _= lsqr(L_op, toto, atol=tol, btol=tol, iter_lim=maxiter)
+            X, r1norm, _, _ = lsqr(Q, toto, lapack_driver='gelsy') # type: ignore
             cgpt = X.reshape((2*ord, 2*ord))
             
             res.append(r1norm)
@@ -535,14 +514,15 @@ class Electric_Fish(SmallInclusion):
             
             if symmode:
                 cgpt = cgpt + cgpt.T
-            
+            Q_list.append(Q)
             CGPT_block.append(cgpt)
 
         #Print out the results
         results= {
             'CGPT': CGPT_block, #type: ignore
             'residuals': res, #type: ignore
-            'relative_residuals': rres #type: ignore
+            'relative_residuals': rres, #type: ignore
+            'Q' : Q_list
         }
 
         return results
@@ -551,28 +531,30 @@ class Electric_Fish(SmallInclusion):
         PT = []
         res = []
         rres = []
+        op = Electric_Fish.make_linop_PT(self._cfg, Current_bg, self.impd, symmode)
+        L = op['L']
+        As = op['As']
+        Ar = op['Ar']
+        def mv(x):
+            return L(x, False)
+        def rv(x):
+            return L(x, True)
+        
+        ns = As.shape[0]
+        if isinstance(Ar, np.ndarray):
+            nr, _ = Ar.shape
+        else: 
+            nr, _ = Ar[0].shape  # type: ignore
+
+        L_op = LinearOperator(shape= (ns*nr, 4),dtype= np.complex128, matvec=mv, rmatvec = rv) #type: ignore
+        Q = L_op.matmat(np.eye(L_op.shape[1]))
+
         for f in range(len(SFR)):
-            op = Electric_Fish.make_linop_PT(self._cfg, Current_bg, self.impd, symmode)
-            L = op['L']
-            As = op['As']
-            Ar = op['Ar']
-            def mv(x):
-                return L(x, False)
-            def rv(x):
-                return L(x, True)
-            
-            ns = As.shape[0]
-            if isinstance(Ar, np.ndarray):
-                nr, _ = Ar.shape
-            else: 
-                nr, _ = Ar[0].shape  # type: ignore
-
-            L_op = LinearOperator(shape= (ns*nr, 4),dtype= np.complex128, matvec=mv, rmatvec = rv) #type: ignore
-
             toto = SFR[f].reshape(-1,1)
             if toto.shape == (1,1):
                 toto = toto.reshape(1)
-            X, _, _, r1norm, _, _, _, _, _, _= lsqr(L_op, toto, atol=tol, btol=tol, iter_lim=maxiter)
+            #X, _, _, r1norm, _, _, _, _, _, _= lsqr(L_op, toto, atol=tol, btol=tol, iter_lim=maxiter)
+            X, r1norm, _, _ = lsqr(Q, toto, lapack_driver='gelsy') # type: ignore
             pt = X.reshape((2, 2))
             
             res.append(r1norm)
@@ -581,10 +563,10 @@ class Electric_Fish(SmallInclusion):
         results = {
             'PT': PT,
             'res': res,
-            'rres': rres
+            'rres': rres,
+            'Q' : Q
         }
         return results
-
 
     @staticmethod
     def system_matrix_block_A(Omega, type1, step1, impd):
@@ -763,6 +745,7 @@ class Electric_Fish(SmallInclusion):
         }
         
         return results
+    
     @staticmethod
     def make_matrix_gradUG(cfg, Z, current_bg, impd):
         """
